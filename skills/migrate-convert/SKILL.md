@@ -37,6 +37,11 @@ Do NOT inline these into the prompt; open the reference when the workflow needs 
   Follow these — they encode fixes learned from real runs. Do not inherit standards from other
   installed skills.
 
+Target-specific guides — open the ONE matching the configured `target`:
+- `references/target-notebook-job.md` — `notebook_job`: notebooks + a Lakeflow Job (ai-dev-kit MCP).
+- `references/target-dbsql.md` — `dbsql`: Databricks SQL files + a SQL Warehouse Job.
+- (`sdp` uses the SDP patterns in the standards + index references above.)
+
 ## Workflow
 
 ### 1. Load the object + config + open a run

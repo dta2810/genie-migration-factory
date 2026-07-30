@@ -69,8 +69,21 @@ CALL <catalog>.<schema>.transition('alteryx:<name>', 'assessed', NULL, NULL, NUL
 -- 5. close the run
 CALL <catalog>.<schema>.end_run('assess-<name>-<ts>', 'ok');
 ```
-Also seed engagement config the first time (target type, thresholds):
-`CALL <catalog>.<schema>.set_config('target', 'sdp');`
+
+### 4b. Seed engagement config (first assess of the engagement)
+The `config` table is the single source of engagement parameters — `migrate-convert` reads it,
+so behavior is config-driven, not hard-coded. On the first assess (or whenever a value changes),
+seed it. **Do not skip this** — an unseeded `target` is why conversions previously defaulted to SDP.
+```sql
+CALL <catalog>.<schema>.set_config('target', 'sdp');            -- sdp | notebook_job | dbsql
+CALL <catalog>.<schema>.set_config('confidence_threshold', '0.8');  -- convert->needs_review cutoff
+CALL <catalog>.<schema>.set_config('target_catalog', '<catalog>');
+CALL <catalog>.<schema>.set_config('target_schema', '<schema>');
+```
+- **Pick `target` from what the user asked.** "Lakeflow job" / "notebooks" → `notebook_job`;
+  "Databricks SQL" / "SQL warehouse" → `dbsql`; "SDP" / "declarative pipeline" / unspecified → `sdp`.
+- Read the current target before assuming: `SELECT config_value FROM <catalog>.<schema>.config
+  WHERE config_key='target';` — only set it if absent or the user changed their mind.
 
 ### 5. Report
 Summarize to the user: N objects registered, complexity breakdown, top TODOs, and the suggested
