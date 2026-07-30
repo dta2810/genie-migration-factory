@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+dist/
+build/
+
+# Databricks
+.databricks/
+*.whl
+
+# OS / editor
+.DS_Store
+.idea/
+.vscode/
+
+# Local secrets / config
+.env
+*.local
