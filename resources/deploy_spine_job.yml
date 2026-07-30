@@ -1,0 +1,12 @@
+resources:
+  jobs:
+    deploy_spine:
+      name: "[${bundle.target}] Genie Migration Factory - Deploy Spine"
+      tasks:
+        - task_key: create_registry
+          notebook_task:
+            notebook_path: ../spine/deploy/deploy_spine.py
+            base_parameters:
+              catalog: ${var.catalog_name}
+              schema: ${var.client_schema}
+              volume: ${var.volume_name}
