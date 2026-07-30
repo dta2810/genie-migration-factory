@@ -1,0 +1,101 @@
+<?xml version="1.0"?>
+<AlteryxDocument yxmdVer="2024.1" RecordCacheMetafile="">
+  <Nodes>
+    <Node ToolID="1">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="60" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File>C:\Data\product_sales.csv</File>
+          <FormatSpecificOptions>
+            <Delimeter>,</Delimeter>
+            <HeaderRow value="True"/>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Input - Product Sales</Name>
+          <AnnotationText>Load raw product sales</AnnotationText>
+        </Annotation>
+      </Properties>
+      <OutPorts><OutPort Name="Output" Source="DbFileInput_1"/></OutPorts>
+    </Node>
+    <Node ToolID="2">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="180" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <SelectFields>
+            <SelectField field="product_id" selected="True"/>
+            <SelectField field="region" selected="True"/>
+            <SelectField field="units_sold" selected="True"/>
+            <SelectField field="unit_price" selected="True"/>
+            <SelectField field="sale_date" selected="True"/>
+          </SelectFields>
+        </Configuration>
+        <Annotation DisplayMode="0"><Name>Select Fields</Name></Annotation>
+      </Properties>
+    </Node>
+    <Node ToolID="3">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Filter.Filter">
+        <Position x="300" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Expression>[units_sold] &gt; 0</Expression>
+        </Configuration>
+        <Annotation DisplayMode="0"><Name>Filter - Valid Sales</Name></Annotation>
+      </Properties>
+    </Node>
+    <Node ToolID="4">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula">
+        <Position x="420" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <FormulaFields>
+            <FormulaField expression="[units_sold] * [unit_price]" field="revenue" size="8" type="Double"/>
+            <FormulaField expression="Uppercase([region])" field="region_code" size="16" type="String"/>
+          </FormulaFields>
+        </Configuration>
+        <Annotation DisplayMode="0"><Name>Formula - Revenue</Name></Annotation>
+      </Properties>
+    </Node>
+    <Node ToolID="5">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Summarize.Summarize">
+        <Position x="540" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <SummarizeFields>
+            <SummarizeField field="product_id" action="GroupBy"/>
+            <SummarizeField field="region_code" action="GroupBy"/>
+            <SummarizeField field="revenue" action="Sum" rename="total_revenue"/>
+            <SummarizeField field="units_sold" action="Sum" rename="total_units"/>
+          </SummarizeFields>
+        </Configuration>
+        <Annotation DisplayMode="0"><Name>Summarize by Product/Region</Name></Annotation>
+      </Properties>
+    </Node>
+    <Node ToolID="6">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput">
+        <Position x="660" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File>C:\Data\product_region_summary.csv</File>
+        </Configuration>
+        <Annotation DisplayMode="0"><Name>Output - Summary</Name></Annotation>
+      </Properties>
+    </Node>
+  </Nodes>
+  <Connections>
+    <Connection><Origin ToolID="1" Connection="Output"/><Destination ToolID="2" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="2" Connection="Output"/><Destination ToolID="3" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="3" Connection="True"/><Destination ToolID="4" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="4" Connection="Output"/><Destination ToolID="5" Connection="Input"/></Connection>
+    <Connection><Origin ToolID="5" Connection="Output"/><Destination ToolID="6" Connection="Input"/></Connection>
+  </Connections>
+  <Properties><Name>Product Sales Summary</Name></Properties>
+</AlteryxDocument>

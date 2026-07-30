@@ -19,3 +19,8 @@ build/
 # Local secrets / config
 .env
 *.local
+
+# Internal process/research docs live in the SA vault, never in the deployable repo
+FINDINGS.md
+NOTES.md
+*.internal.md
