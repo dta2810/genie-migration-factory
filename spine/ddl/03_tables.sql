@@ -68,7 +68,7 @@ COMMENT 'Ranked unresolved conversion items for triage';
 CREATE TABLE IF NOT EXISTS ${catalog}.${schema}.artifacts (
   artifact_id   STRING    NOT NULL,
   object_id     STRING    NOT NULL COMMENT 'the migration object this artifact belongs to',
-  artifact_type STRING             COMMENT 'notebook | sql_file | job | pipeline',
+  artifact_type STRING             COMMENT 'notebook | sql_file | job | pipeline | table',
   source_tool   STRING             COMMENT 'the Alteryx tool/node this artifact was generated from (for notebook-per-tool)',
   path          STRING             COMMENT 'workspace path (notebook/sql) — NULL for job/pipeline',
   external_id   STRING             COMMENT 'job_id or pipeline_id — NULL for files',

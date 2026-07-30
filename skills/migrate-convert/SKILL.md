@@ -54,6 +54,13 @@ Target-specific guides — open the ONE matching the configured `target`:
 - Read the source artifact from the Volume.
 
 ### 2. Convert, following the reference rules
+- **Tables land in the object's OWN schema, not the registry schema.** Create it first:
+  `CREATE SCHEMA IF NOT EXISTS <output_catalog>.mig_<object_slug>` (output_catalog from config;
+  object_slug = object_id with ':'→'_'). ALL tables the pipeline produces —
+  intermediate `_stage_*` and final gold/detail — go in `<output_catalog>.mig_<object_slug>.<table>`.
+  This isolates each migration's output (no cross-object collision, drop-schema cleans it up) and
+  keeps it out of `migration_factory` (the framework registry). Intermediate `_stage_*` tables
+  **persist** (real tables, inspectable/auditable), not temp views — register each in `artifacts`.
 - Apply the **5-question visual-operator pre-check** and **decomposition rules** from the
   pre-checks reference before writing code.
 - Map each tool via the tool-mapping reference; translate formulas via the formula reference.
@@ -88,9 +95,11 @@ Target-specific guides — open the ONE matching the configured `target`:
 - For `dbsql`: write `.sql` files to `<output_dir>/<source_type>/<object_slug>/`; create the
   SQL Warehouse job.
 - For `sdp`: write the pipeline file; create/point the SDP pipeline.
-- **Register every artifact** so the object is traceable to what it produced:
-  `CALL <catalog>.<schema>.add_artifact('<object_id>', 'notebook'|'sql_file'|'job'|'pipeline',
-  '<source_tool or NULL>', '<path or NULL>', '<job_id/pipeline_id or NULL>', '<json detail>');`
+- **Register every artifact** so the object is traceable to what it produced — notebooks/sql files,
+  the job/pipeline, AND the output tables (each `_stage_*` and final table):
+  `CALL <catalog>.<schema>.add_artifact('<object_id>', 'notebook'|'sql_file'|'job'|'pipeline'|'table',
+  '<source_tool or NULL>', '<path or table_fqn or NULL>', '<job_id/pipeline_id or NULL>', '<json detail>');`
+  (For a table artifact use type='table' and put the full `mig_<slug>.<table>` fqn in the path arg.)
 
 ### 4. Score deterministically (NOT self-reported)
 - Run `confidence.score(converted_code)` from `spine/lib/confidence.py`.
@@ -103,21 +112,48 @@ atomically. Do NOT hand-write INSERT/UPDATE and do NOT invent your own run_id/au
 ```sql
 -- one per deterministic finding
 CALL <catalog>.<schema>.add_todo('<object_id>', '<category>', '<message>', '<severity>');
--- advance: converted if confidence high and no blocker; else needs_review
-CALL <catalog>.<schema>.transition('<object_id>', 'converted', <confidence>, '<output_path>', NULL, 'converted to <target>', '<run_id>');
--- OR: CALL ...transition('<object_id>', 'needs_review', <confidence>, '<output_path>', NULL, '<why>', '<run_id>');
-CALL <catalog>.<schema>.end_run('<run_id>', 'ok');   -- or 'partial' / 'failed'
+-- mark code generated. 'converted' means CODE GENERATED, NOT validated — it is an intermediate
+-- state, never the happy end. Use needs_review instead if confidence<threshold or a blocker exists.
+CALL <catalog>.<schema>.transition('<object_id>', 'converted', <confidence>, '<output_path>', NULL, 'code generated for <target>', '<run_id>');
+CALL <catalog>.<schema>.end_run('<run_id>', 'ok');
 ```
-Routing rule: `needs_review` if `confidence < threshold` (from `config`, default 0.8) OR any
-finding is a blocker; otherwise `converted`.
+`converted` routing: if `confidence < threshold` (config, default 0.8) OR any finding is a
+blocker → go to `needs_review` and STOP (don't validate). Otherwise → `converted`, then validate.
+
+### 5b. VALIDATE gate — run it before claiming success (do NOT skip)
+**"converted" = code generated; "validated" = it actually ran and produced output.** A converted
+object is NOT done. Validate per `validation_data_mode` (config; default `schema_only`):
+
+- **`schema_only` (default):** static check + dry-run — build the table-dependency graph from the
+  notebooks (`spark.read.table` vs `saveAsTable`) and confirm every read is written by an upstream
+  task per the job's `depends_on`. This catches topological-order bugs (a task reading a table a
+  later task writes) WITHOUT any data. See `references/validation.md`.
+- **`synthetic`:** generate sample source data (see `references/synthetic-data-generation.md`),
+  `add_artifact` + a standing TODO "validated with synthetic data — re-validate with real data",
+  then run the job and check success.
+- **`real`:** run the job on the real source data at config `source_data_dir`.
+
+Then:
+```sql
+-- link the job run for traceability
+CALL <catalog>.<schema>.link_run('<run_id>', '<job_run_id>');
+-- success → validated ; failure → needs_review + the error as a blocker TODO
+CALL <catalog>.<schema>.transition('<object_id>', 'validated', <confidence>, NULL, NULL, 'validated (<mode>): job run <job_run_id> succeeded', '<run_id>');
+-- on failure instead:
+-- CALL ...add_todo('<object_id>', 'validation', '<captured error text>', 'blocker');
+-- CALL ...transition('<object_id>', 'needs_review', <confidence>, NULL, NULL, 'validation failed: <short reason>', '<run_id>');
+```
+NEVER declare validated without a successful run/dry-run. If data is missing and mode is
+`schema_only`, the dry-run still validates structure; only `real`/`synthetic` execute data.
 
 ### 6. Report
-Tell the user: target emitted, confidence, open TODOs (ranked), and whether it's ready or needs
-review. Offer to resolve the top TODO interactively (this is the human-in-the-loop repair — it
-resolves TODOs and re-scores, still one object at a time).
+Tell the user: target emitted, confidence, validation result (mode + pass/fail), open TODOs
+(ranked), and next state. Offer to resolve the top TODO interactively (human-in-the-loop repair —
+resolve TODOs, re-run the validate gate, still one object at a time).
 
 ## Output rules
 - One object per run. Do not batch here.
 - All state, TODOs, and audit go to the registry — never just printed.
 - Confidence is always the deterministic score, never an LLM guess.
+- **Never reach `validated` without a successful job run or dry-run** (per validation_data_mode).
 - Faithful conversion: prefer a visual/SQL operator over hand-written Python (see pre-checks).

@@ -35,6 +35,13 @@
   Keeping the slug makes each notebook self-identifying even if moved.
 - **Job: one task per notebook**, `task_key` = notebook name, `depends_on` = the Alteryx
   connections (the DAG). Create via ai-dev-kit MCP `manage_jobs`.
+- **CRITICAL — order `depends_on` TOPOLOGICALLY from the `<Connections>`, NOT by ToolID number.**
+  A task must depend on every tool that FEEDS it per the workflow's connections. ToolID order is
+  NOT execution order: e.g. if Tool 11 (MultiRowFormula) consumes Tool 12's (Sort) output, then
+  11 `depends_on` 12 — even though 11 < 12. Wiring by number produces a "reads a table written
+  later" failure (`TABLE_OR_VIEW_NOT_FOUND`). Build the depends_on graph purely from Origin→
+  Destination in `<Connections>`; verify it's a DAG (no cycles) and that every table a notebook
+  reads is written by an upstream task.
 - **Traceability: register every notebook and the job** with `add_artifact` (see the skill).
 
 ## Architecture: Medallion Notebooks + Job (simple/linear case)

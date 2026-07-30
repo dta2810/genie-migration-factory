@@ -56,10 +56,12 @@ row together, so the audit trail stays complete by construction. Call them with 
 hand-write INSERT/UPDATE against `objects`/`audit`/`runs`/`todos`.
 
 ```sql
--- 1. register the object (idempotent: refreshes assessment fields on re-scan)
+-- 1. register the object (idempotent: refreshes assessment fields on re-scan).
+--    target_uc_fqn points at the object's OWN output schema mig_<object_slug> in output_catalog,
+--    NOT the registry schema. object_slug = object_id with ':' -> '_'.
 CALL <catalog>.<schema>.register_object(
   'alteryx:<name>', 'alteryx', 'workflow', '<volume_path>', NULL,
-  '<catalog>.<schema>.<target>', 'gold', 'medium');
+  '<output_catalog>.mig_<object_slug>.<final_table>', 'gold', 'medium');
 -- 2. open the assess run (you supply the run_id)
 CALL <catalog>.<schema>.start_run('assess-<name>-<ts>', 'alteryx:<name>', 'assess', 'genie_code');
 -- 3. one add_todo per forecast item
@@ -82,6 +84,15 @@ CALL <catalog>.<schema>.set_config('target_schema', '<schema>');
 -- base workspace folder for generated output. Each object gets its own CONTAINER folder under
 -- <output_dir>/<source_type>/<object_slug>/ (hierarchical), holding its notebooks/SQL.
 CALL <catalog>.<schema>.set_config('output_dir', '/Workspace/Users/<me>/migration-factory');
+-- how the convert VALIDATE gate runs: schema_only (dry-run, no data — default & safest) |
+-- synthetic (generate sample data, audited, never counts as real validation) | real (use source_data_dir).
+CALL <catalog>.<schema>.set_config('validation_data_mode', 'schema_only');
+-- only for validation_data_mode='real': where the real source files live in a Volume.
+-- CALL <catalog>.<schema>.set_config('source_data_dir', '/Volumes/.../raw/data');
+-- catalog for migration OUTPUT tables (kept SEPARATE from the registry schema). Each object gets
+-- its own schema mig_<object_slug> inside it, so output never mixes with the framework registry
+-- and objects never collide. Default: the registry catalog.
+CALL <catalog>.<schema>.set_config('output_catalog', '<catalog>');
 ```
 - **Pick `target` from what the user asked.** "Lakeflow job" / "notebooks" → `notebook_job`;
   "Databricks SQL" / "SQL warehouse" → `dbsql`; "SDP" / "declarative pipeline" / unspecified → `sdp`.
