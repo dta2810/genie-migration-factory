@@ -79,8 +79,8 @@ CALL <catalog>.<schema>.set_config('target', 'sdp');            -- sdp | noteboo
 CALL <catalog>.<schema>.set_config('confidence_threshold', '0.8');  -- convert->needs_review cutoff
 CALL <catalog>.<schema>.set_config('target_catalog', '<catalog>');
 CALL <catalog>.<schema>.set_config('target_schema', '<schema>');
--- shared workspace folder where all generated notebooks/SQL land (NOT per-object; notebooks are
--- named <object_slug>__<NN>_<tool> so they stay distinct in the shared folder).
+-- base workspace folder for generated output. Each object gets its own CONTAINER folder under
+-- <output_dir>/<source_type>/<object_slug>/ (hierarchical), holding its notebooks/SQL.
 CALL <catalog>.<schema>.set_config('output_dir', '/Workspace/Users/<me>/migration-factory');
 ```
 - **Pick `target` from what the user asked.** "Lakeflow job" / "notebooks" → `notebook_job`;

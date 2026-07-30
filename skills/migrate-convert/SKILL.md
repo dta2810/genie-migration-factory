@@ -63,11 +63,13 @@ Target-specific guides — open the ONE matching the configured `target`:
   - `sdp` — Lakeflow Spark Declarative Pipeline (`@dp` Python or LDP SQL).
   - `notebook_job` — **one notebook per Alteryx tool/node**, plus a Lakeflow Job wiring them in
     the DAG order. Conventions (do not improvise):
-    - **Folder:** a single shared `output_dir` (from config) — no per-object subfolders.
-    - **Naming:** `<object_id_slug>__<NN>_<tool>` where NN is the ToolID and tool is the plugin
-      short name, e.g. `sample_sales_analytics_complex__04_Filter`, `__11_MultiRowFormula`.
-      (object_id_slug = object_id with ':' → '_'.) This keeps every object's notebooks distinct
-      in the shared folder.
+    - **Folder:** a per-object CONTAINER folder, hierarchical by source then object:
+      `<output_dir>/<source_type>/<object_slug>/` — e.g.
+      `<output_dir>/alteryx/sample_sales_analytics_complex/`. Never dump notebooks loose in
+      `output_dir`. Create the container folder first.
+    - **Naming (inside the folder):** `<object_slug>__<NN>_<tool>` (keep the slug so a notebook
+      is self-identifying even if moved), NN = ToolID, tool = plugin short name. E.g.
+      `sample_sales_analytics_complex__04_Filter`, `__11_MultiRowFormula`.
     - **Job:** create it via the **ai-dev-kit MCP tools** (`manage_jobs`), one task per notebook,
       `task_key` = the notebook name, `depends_on` matching the Alteryx connections (the DAG).
     - **Traceability (MANDATORY):** after writing each notebook, `CALL add_artifact(object_id,
@@ -80,9 +82,11 @@ Target-specific guides — open the ONE matching the configured `target`:
   function), leave a clear `-- TODO:` marker in the output describing what needs manual work.
 
 ### 3. Write the output + register artifacts
-- For `notebook_job`: write each notebook to the shared `output_dir` using the naming convention
-  above; create the Lakeflow Job via ai-dev-kit MCP `manage_jobs`.
-- For `dbsql`: write `.sql` files to `output_dir`; create the SQL Warehouse job.
+- For `notebook_job`: create the container folder `<output_dir>/<source_type>/<object_slug>/`,
+  write each notebook there using the naming convention above; create the Lakeflow Job via
+  ai-dev-kit MCP `manage_jobs`.
+- For `dbsql`: write `.sql` files to `<output_dir>/<source_type>/<object_slug>/`; create the
+  SQL Warehouse job.
 - For `sdp`: write the pipeline file; create/point the SDP pipeline.
 - **Register every artifact** so the object is traceable to what it produced:
   `CALL <catalog>.<schema>.add_artifact('<object_id>', 'notebook'|'sql_file'|'job'|'pipeline',
