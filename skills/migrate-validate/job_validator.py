@@ -27,30 +27,76 @@ class TableIO:
     writes: Set[str]
 
 
+def _warehouse_id(w: WorkspaceClient) -> str:
+    """Pick a running/available SQL warehouse to execute CALL statements."""
+    whs = list(w.warehouses.list())
+    if not whs:
+        raise RuntimeError("no SQL warehouse available to run registry CALL statements")
+    # prefer a RUNNING one, else the first
+    running = [x for x in whs if getattr(x.state, "value", str(x.state)) == "RUNNING"]
+    return (running[0] if running else whs[0]).id
+
+
 # ============================================================================
 # STATIC ANALYSIS: Extract table I/O from notebook code
 # ============================================================================
 
 
+def _normalize_table_ref(raw: str) -> Optional[str]:
+    """Reduce a table reference to a comparable key.
+
+    Real Genie notebooks write f-strings like f"{catalog}.{schema}._stage_04_filtered".
+    We can't resolve {catalog}/{schema} statically, so we key on the UNqualified table name
+    (the last dotted segment), stripping any `{...}` interpolation and quotes/backticks.
+    Returns None if nothing usable remains (e.g. a fully dynamic name).
+    """
+    if raw is None:
+        return None
+    s = raw.strip().strip('`"\' ')
+    # drop leading f-string interpolations like {catalog}.{schema}.
+    # keep the final segment after the last '.' that isn't itself an interpolation
+    segments = s.split('.')
+    tail = None
+    for seg in reversed(segments):
+        seg = seg.strip()
+        if seg and '{' not in seg and '}' not in seg:
+            tail = seg
+            break
+    if not tail:
+        return None
+    return tail.lower()
+
+
 def extract_spark_io(notebook_code: str) -> tuple[Set[str], Set[str]]:
     """
-    Extract spark.read.table() and saveAsTable() calls from notebook code.
+    Extract table reads/writes from notebook code, handling f-strings.
 
-    Returns: (reads, writes) — sets of fully-qualified table names
+    Matches both literal strings and f-strings, e.g.:
+      spark.read.table(f"{catalog}.{schema}._stage_12_sorted")
+      df.write... .saveAsTable(f"{catalog}.{schema}._stage_11_filtered")
+    Table names are normalized to their unqualified tail (e.g. '_stage_12_sorted') so the
+    catalog/schema interpolation doesn't defeat matching. Also captures spark.read.load/format
+    is intentionally out of scope (those are file reads, not table deps).
+
+    Returns: (reads, writes) — sets of NORMALIZED (unqualified, lowercased) table names.
     """
-    reads = set()
-    writes = set()
+    reads: Set[str] = set()
+    writes: Set[str] = set()
 
-    # spark.read.table("catalog.schema.table")
-    read_pattern = r'spark\.read\.table\(["\']([^"\']+)["\']\)'
-    reads.update(re.findall(read_pattern, notebook_code))
+    # Accept optional f-prefix and either quote style; capture the raw string content.
+    read_pattern = r'spark\.read\.table\(\s*f?["\']([^"\']+)["\']\s*\)'
+    write_pattern = r'saveAsTable\(\s*f?["\']([^"\']+)["\']\s*\)'
+    # spark.readStream.table(...) too
+    read_stream_pattern = r'spark\.readStream\.table\(\s*f?["\']([^"\']+)["\']\s*\)'
 
-    # .saveAsTable("catalog.schema.table")
-    write_pattern = r'saveAsTable\(["\']([^"\']+)["\']\)'
-    writes.update(re.findall(write_pattern, notebook_code))
-
-    # Also catch: df.write.format("delta").mode(...).saveAsTable(...)
-    # (handled by write_pattern above)
+    for m in re.findall(read_pattern, notebook_code) + re.findall(read_stream_pattern, notebook_code):
+        norm = _normalize_table_ref(m)
+        if norm:
+            reads.add(norm)
+    for m in re.findall(write_pattern, notebook_code):
+        norm = _normalize_table_ref(m)
+        if norm:
+            writes.add(norm)
 
     return reads, writes
 
@@ -80,9 +126,11 @@ def build_task_table_graph(job, w: WorkspaceClient) -> Dict[str, TableIO]:
 
         # Try to fetch notebook content
         try:
-            # Export the notebook as text/plain
-            exported = w.workspace.export(path=notebook_path, format="SOURCE")
-            notebook_content = exported.contents.decode('utf-8') if isinstance(exported.contents, bytes) else exported.contents
+            import base64
+            from databricks.sdk.service.workspace import ExportFormat
+            exported = w.workspace.export(path=notebook_path, format=ExportFormat.SOURCE)
+            raw = exported.content  # base64-encoded string
+            notebook_content = base64.b64decode(raw).decode("utf-8") if raw else ""
 
             reads, writes = extract_spark_io(notebook_content)
             task_io[task_key] = TableIO(task_key, reads, writes)
@@ -178,43 +226,67 @@ def validate_job_structure(job, w: WorkspaceClient) -> List[str]:
 # ============================================================================
 
 
+def _reachable_upstream(task_key: str, dep_graph: Dict[str, List[str]]) -> Set[str]:
+    """All tasks that run before `task_key` per depends_on (transitive)."""
+    seen: Set[str] = set()
+    stack = list(dep_graph.get(task_key, []))
+    while stack:
+        t = stack.pop()
+        if t in seen:
+            continue
+        seen.add(t)
+        stack.extend(dep_graph.get(t, []))
+    return seen
+
+
 def detect_topological_errors(job, task_io: Dict[str, TableIO]) -> List[str]:
     """
-    Compare job.depends_on with table I/O.
+    Detect the "11/12 bug": a task reads a table that is written by a task NOT guaranteed to
+    run before it. Correctness is defined by depends_on (the real execution constraint), not by
+    task list index — two tasks with no dependency path can run in any order / in parallel.
 
-    Detect: task B reads a table that task C writes, but C comes after B in the DAG.
-    This is the "11/12 bug" — a topological inversion.
+    A read is safe only if the writer is a transitive `depends_on` ancestor. We flag:
+      - writer runs later / is not an upstream ancestor (true inversion or missing dependency)
+      - a read whose table no task writes (only if some task writes a similarly-named staging table
+        — otherwise it's an external/source read, not an error)
 
-    Returns: list of error strings (empty = no inversions)
+    Returns: list of error strings (empty = no inversions).
     """
     errors = []
-    task_order = {task.task_key: i for i, task in enumerate(job.settings.tasks)}
 
-    # Build: which task writes each table?
-    table_writer = {}
+    # depends_on graph: task -> [its upstream deps]
+    dep_graph = {t.task_key: [d.task_key for d in (t.depends_on or [])] for t in job.settings.tasks}
+
+    # which task writes each (normalized) table
+    table_writer: Dict[str, str] = {}
     for task_key, io in task_io.items():
         for table in io.writes:
-            if table in table_writer:
-                # Multiple writers for same table (warning)
-                pass
             table_writer[table] = task_key
 
-    # Check: does each task read tables written by tasks that come after it?
+    # any static I/O extracted at all? if not, we can't reason about tables — say so.
+    any_io = any(io.reads or io.writes for io in task_io.values())
+    if not any_io:
+        errors.append(
+            "Could not extract any table reads/writes from the notebooks — static table-dependency "
+            "validation is inconclusive. Verify the notebooks use spark.read.table/saveAsTable."
+        )
+        return errors
+
     for task_key, io in task_io.items():
-        task_idx = task_order[task_key]
-
+        upstream = _reachable_upstream(task_key, dep_graph)
         for read_table in io.reads:
-            if read_table in table_writer:
-                writer_task = table_writer[read_table]
-                writer_idx = task_order[writer_task]
-
-                if writer_idx > task_idx:
-                    # Task reads a table from a task that comes LATER
-                    errors.append(
-                        f"Topological inversion: task '{task_key}' (index {task_idx}) reads "
-                        f"'{read_table}', but task '{writer_task}' (index {writer_idx}) writes it. "
-                        f"Task order is inverted."
-                    )
+            writer = table_writer.get(read_table)
+            if writer is None:
+                # table not written by any task → treated as an external/source input, not an error
+                continue
+            if writer == task_key:
+                continue
+            if writer not in upstream:
+                errors.append(
+                    f"Topological inversion: task '{task_key}' reads '{read_table}', written by "
+                    f"'{writer}', but '{writer}' is NOT an upstream depends_on of '{task_key}'. "
+                    f"The job would read a table before it is written (TABLE_OR_VIEW_NOT_FOUND)."
+                )
 
     return errors
 
@@ -368,34 +440,33 @@ def full_validation_run(
             }
         print("  ✓ Schema validation passed")
 
-    # Step 2: Run the job
-    print("[Full run] Step 2: Triggering job run...")
-    run_response = w.jobs.run_now(job_id=job_id)
-    run_id = run_response.result().run_id
-    print(f"  Run ID: {run_id}")
-
-    # Step 3: Wait for completion
-    print(f"[Full run] Step 3: Waiting for completion (max {timeout_minutes} min)...")
+    # Step 2+3: Run the job ONCE and wait (run_now_and_wait triggers a single run).
+    print(f"[Full run] Step 2: Triggering + waiting (max {timeout_minutes} min)...")
+    from databricks.sdk.errors import TimeoutError as SdkTimeout
     try:
         run = w.jobs.run_now_and_wait(
             job_id=job_id,
             timeout=timedelta(minutes=timeout_minutes)
         )
-    except Exception as e:
+    except SdkTimeout as e:
         print(f"  ✗ Run timed out: {e}")
-        return {
-            "status": "TIMEOUT",
-            "run_id": run_id,
-            "job_id": job_id,
-            "error": str(e)
-        }
+        return {"status": "TIMEOUT", "run_id": None, "job_id": job_id, "error": str(e)}
+    except Exception as e:
+        # network / invalid job / permissions — a real failure, not a timeout
+        print(f"  ✗ Run could not complete: {e}")
+        return {"status": "FAILED", "run_id": None, "job_id": job_id,
+                "errors": [f"job run error: {e}"], "todos": []}
+
+    run_id = run.run_id
+    print(f"  Run ID: {run_id}")
 
     # Step 4: Analyze results
     print("[Full run] Step 4: Analyzing results...")
-    run = w.jobs.get_run(run_id)
-
-    overall_result = run.state.result_state if run.state else None
-    lifecycle = run.state.life_cycle_state if run.state else None
+    if run.state is None:
+        return {"status": "FAILED", "run_id": run_id, "job_id": job_id,
+                "errors": ["run completed with no state object"], "todos": []}
+    overall_result = run.state.result_state
+    lifecycle = run.state.life_cycle_state
 
     # Capture task results
     task_results = []
@@ -489,77 +560,60 @@ def validate_and_register_migration(
     else:
         validation_result = schema_only_validate(job_id, w)
 
-    # Extract common fields
     status = validation_result.get("status", "UNKNOWN")
     run_id = validation_result.get("run_id")
     errors = validation_result.get("errors", [])
     todos = validation_result.get("todos", [])
 
-    # Record in migration_factory registry
-    if status == 'VALIDATED':
-        # Update object status
-        w.sql.execute(
-            f"""
-            UPDATE {client_schema}.objects
-            SET status = 'validated',
-                confidence = 0.95,
-                updated_at = current_timestamp()
-            WHERE object_id = '{object_id}'
-            """
+    # All registry writes go through the UC procedures (audit-by-construction, parameterized —
+    # never raw INSERT/UPDATE). We pass a caller-supplied migration run_id for the validate step.
+    import uuid as _uuid
+    mig_run_id = f"validate-{object_id.replace(':', '_')}-{_uuid.uuid4().hex[:8]}"
+
+    def _call(proc: str, *args):
+        # Build a CALL with proper SQL literal escaping; execute via statement execution.
+        def lit(v):
+            if v is None:
+                return "NULL"
+            if isinstance(v, (int, float)):
+                return str(v)
+            return "'" + str(v).replace("'", "''") + "'"
+        stmt = f"CALL {client_schema}.{proc}(" + ", ".join(lit(a) for a in args) + ")"
+        w.statement_execution.execute_statement(
+            warehouse_id=_warehouse_id(w), statement=stmt, wait_timeout="30s"
         )
-        return {
-            "status": "VALIDATED",
-            "object_id": object_id,
-            "run_id": run_id,
-            "todos_count": 0
-        }
+
+    _call("start_run", mig_run_id, object_id, "validate", "genie_code")
+
+    if status == 'VALIDATED':
+        if run_id is not None:
+            _call("link_run", mig_run_id, str(run_id))
+        _call("transition", object_id, "validated", 0.95, None, None,
+              f"validated: job run {run_id} succeeded", mig_run_id)
+        _call("end_run", mig_run_id, "ok")
+        return {"status": "VALIDATED", "object_id": object_id, "run_id": run_id, "todos_count": 0}
 
     elif status == 'BLOCKED':
-        # Record blocking errors as TODOs
-        for i, error in enumerate(errors):
-            w.sql.execute(
-                f"""
-                INSERT INTO {client_schema}.todos
-                (object_id, status, severity, message, action, created_at)
-                VALUES ('{object_id}', 'BLOCKED', 'CRITICAL', '{error}', 'FIX_JOB_STRUCTURE', current_timestamp())
-                """
-            )
-        return {
-            "status": "BLOCKED",
-            "object_id": object_id,
-            "run_id": None,
-            "todos_count": len(errors)
-        }
+        for error in errors:
+            _call("add_todo", object_id, "validation", error, "blocker")
+        _call("transition", object_id, "needs_review", None, None, None,
+              "validation blocked: schema/structure check failed", mig_run_id)
+        _call("end_run", mig_run_id, "failed")
+        return {"status": "BLOCKED", "object_id": object_id, "run_id": None, "todos_count": len(errors)}
 
     else:  # FAILED
-        # Record TODOs for each failed task
+        if run_id is not None:
+            _call("link_run", mig_run_id, str(run_id))
         for todo in todos:
-            w.sql.execute(
-                f"""
-                INSERT INTO {client_schema}.todos
-                (object_id, task_key, status, severity, message, action, run_id, created_at)
-                VALUES ('{object_id}', '{todo['task_key']}', 'TODO', '{todo['severity']}',
-                        '{todo['error']}', '{todo['action']}', {run_id}, current_timestamp())
-                """
-            )
-
-        # Update object with partial validation
-        w.sql.execute(
-            f"""
-            UPDATE {client_schema}.objects
-            SET status = 'needs_review',
-                confidence = 0.3,
-                updated_at = current_timestamp()
-            WHERE object_id = '{object_id}'
-            """
-        )
-
-        return {
-            "status": "FAILED",
-            "object_id": object_id,
-            "run_id": run_id,
-            "todos_count": len(todos)
-        }
+            _call("add_todo", object_id, "validation",
+                  f"task {todo.get('task_key')}: {todo.get('error')}", "blocker")
+        for error in errors:
+            _call("add_todo", object_id, "validation", error, "blocker")
+        _call("transition", object_id, "needs_review", None, None, None,
+              f"validation failed: job run {run_id}", mig_run_id)
+        _call("end_run", mig_run_id, "failed")
+        return {"status": "FAILED", "object_id": object_id, "run_id": run_id,
+                "todos_count": len(todos) + len(errors)}
 
 
 if __name__ == "__main__":
