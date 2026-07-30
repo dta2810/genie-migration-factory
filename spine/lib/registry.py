@@ -80,10 +80,22 @@ class Registry:
         layer: str | None = None,
         complexity: str | None = None,
     ) -> str:
-        """Insert (or replace) an object at status='discovered' and audit it.
+        """Register an object, or refresh its assessment fields if already present.
 
-        Idempotent on object_id so re-scanning the same artifact is safe.
+        Re-scanning the same artifact is safe and idempotent:
+        - New object  -> inserted at status='discovered', audited as a register event.
+        - Existing one -> assessment fields (source_type, object_kind, parent_id,
+          volume_path, target_uc_fqn, layer, complexity) are refreshed WITHOUT resetting
+          its lifecycle status/confidence, and audited as a re-register event. This keeps
+          `migrate-assess` reproducible without lying about the object going back to
+          'discovered'.
         """
+        exists = bool(
+            self.sql(
+                f"SELECT 1 FROM {self._t('objects')} WHERE object_id = {_sql_str(object_id)}"
+            )
+        )
+
         cols = {
             "object_id": object_id,
             "source_type": source_type,
@@ -103,16 +115,32 @@ class Registry:
             _sql_str(v) if k != "updated_at" else f"TIMESTAMP{_sql_str(v)}"
             for k, v in cols.items()
         )
-        # MERGE for idempotency on re-scan.
+        # Refresh only the assessment fields on match; never reset status/confidence.
+        matched_updates = ", ".join(
+            [
+                f"t.source_type = {_sql_str(source_type)}",
+                f"t.object_kind = {_sql_str(object_kind)}",
+                f"t.parent_id = {_sql_str(parent_id)}",
+                f"t.volume_path = {_sql_str(volume_path)}",
+                f"t.target_uc_fqn = {_sql_str(target_uc_fqn)}",
+                f"t.layer = {_sql_str(layer)}",
+                f"t.complexity = {_sql_str(complexity)}",
+                f"t.updated_at = TIMESTAMP{_sql_str(_now())}",
+            ]
+        )
         self.sql(
             f"""
             MERGE INTO {self._t('objects')} t
             USING (SELECT {_sql_str(object_id)} AS object_id) s
             ON t.object_id = s.object_id
+            WHEN MATCHED THEN UPDATE SET {matched_updates}
             WHEN NOT MATCHED THEN INSERT ({collist}) VALUES ({vallist})
             """
         )
-        self._audit(object_id, None, "register", None, "discovered", "object registered")
+        if exists:
+            self._audit(object_id, None, "reregister", None, None, "assessment refreshed")
+        else:
+            self._audit(object_id, None, "register", None, "discovered", "object registered")
         return object_id
 
     def transition(
@@ -136,7 +164,11 @@ class Registry:
         current = self.sql(
             f"SELECT status FROM {self._t('objects')} WHERE object_id = {_sql_str(object_id)}"
         )
-        from_status = current[0]["status"] if current else None
+        if not current:
+            # Never audit a transition for an object that doesn't exist — that would
+            # write a phantom audit row. Register the object first.
+            raise ValueError(f"cannot transition unknown object: {object_id}")
+        from_status = current[0]["status"]
 
         sets = [f"status = {_sql_str(to_status)}", f"updated_at = TIMESTAMP{_sql_str(_now())}"]
         if confidence is not None:

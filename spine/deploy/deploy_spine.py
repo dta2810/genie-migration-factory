@@ -22,15 +22,12 @@ print(f"Deploying spine to {catalog}.{schema} (volume: {volume})")
 import os
 
 # DDL files run in order; ${catalog}/${schema}/${volume} substituted here (not Spark params,
-# since CREATE CATALOG/SCHEMA/VOLUME don't accept bound parameters).
-ddl_dir = os.path.join(os.path.dirname(os.getcwd()), "ddl")
+# since CREATE SCHEMA/VOLUME don't accept bound parameters).
 # When run from the bundle, the notebook sits at spine/deploy/, DDL at spine/ddl/.
-# Resolve relative to this notebook's workspace path.
 candidates = ["../ddl", "spine/ddl", "./ddl"]
 ddl_path = next((c for c in candidates if os.path.isdir(c)), None)
 if ddl_path is None:
-    # Fall back: inline the DDL directory next to this notebook's parent.
-    ddl_path = os.path.join(os.path.dirname(os.path.abspath("__file__")), "..", "ddl")
+    raise FileNotFoundError(f"DDL directory not found; looked in {candidates} from {os.getcwd()}")
 
 files = sorted(f for f in os.listdir(ddl_path) if f.endswith(".sql"))
 print("DDL files:", files)
