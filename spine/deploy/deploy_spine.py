@@ -59,6 +59,9 @@ def split_procedures(text):
     return blocks
 
 
+# gov_catalog defaults to the same catalog; the governance view is optional enrichment.
+gov_catalog = catalog
+
 for fname in files:
     with open(os.path.join(ddl_path, fname)) as fh:
         raw = fh.read()
@@ -66,13 +69,22 @@ for fname in files:
         raw.replace("${catalog}", catalog)
         .replace("${schema}", schema)
         .replace("${volume}", volume)
+        .replace("${gov_catalog}", gov_catalog)
     )
     # Procedure files (BEGIN...END) need END;-based splitting; plain DDL splits on ';'.
     is_proc_file = "CREATE OR REPLACE PROCEDURE" in sql_text
     stmts = split_procedures(sql_text) if is_proc_file else split_statements(sql_text)
     for stmt in stmts:
         print(f"[{fname}] {stmt.splitlines()[0][:80]}...")
-        spark.sql(stmt)
+        try:
+            spark.sql(stmt)
+        except Exception as e:
+            # The governance view (05) references governance.pipeline_audit, which may not
+            # exist in every engagement. It's optional enrichment — warn and continue.
+            if "05_governance" in fname:
+                print(f"  SKIPPED (optional governance view): {str(e)[:120]}")
+            else:
+                raise
 
 print("Spine deployed.")
 

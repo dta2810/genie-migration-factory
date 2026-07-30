@@ -103,7 +103,20 @@ LANGUAGE SQL
 SQL SECURITY INVOKER
 AS BEGIN
   INSERT INTO ${catalog}.${schema}.runs VALUES (
-    p_run_id, p_object_id, p_step, p_engine, current_timestamp(), NULL, NULL);
+    p_run_id, p_object_id, p_step, p_engine, current_timestamp(), NULL, NULL, NULL);
+END;
+
+-- link_run: attach the external pipeline update_id to a run, so the lifecycle audit
+-- (this spine) can be joined to the data-quality audit (governance.pipeline_audit).
+CREATE OR REPLACE PROCEDURE ${catalog}.${schema}.link_run(
+  p_run_id              STRING,
+  p_orchestrator_run_id STRING
+)
+LANGUAGE SQL
+SQL SECURITY INVOKER
+AS BEGIN
+  UPDATE ${catalog}.${schema}.runs SET orchestrator_run_id = p_orchestrator_run_id
+  WHERE run_id = p_run_id;
 END;
 
 -- end_run: close a run with an outcome.

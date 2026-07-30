@@ -22,13 +22,14 @@ COMMENT 'Migration objects and their lifecycle state';
 
 -- One row per executed step (assess/convert/validate/deploy) against an object.
 CREATE TABLE IF NOT EXISTS ${catalog}.${schema}.runs (
-  run_id      STRING    NOT NULL,
-  object_id   STRING    NOT NULL,
-  step        STRING    NOT NULL COMMENT 'assess | convert | validate | deploy',
-  engine      STRING             COMMENT 'genie_code | fmapi_batch',
-  started_at  TIMESTAMP NOT NULL,
-  ended_at    TIMESTAMP,
-  outcome     STRING             COMMENT 'ok | partial | failed',
+  run_id              STRING    NOT NULL,
+  object_id           STRING    NOT NULL,
+  step                STRING    NOT NULL COMMENT 'assess | convert | validate | deploy',
+  engine              STRING             COMMENT 'genie_code | fmapi_batch',
+  started_at          TIMESTAMP NOT NULL,
+  ended_at            TIMESTAMP,
+  outcome             STRING             COMMENT 'ok | partial | failed',
+  orchestrator_run_id STRING             COMMENT 'external pipeline update_id, links to governance.pipeline_audit (data-quality audit)',
   CONSTRAINT pk_runs PRIMARY KEY (run_id)
 )
 COMMENT 'Executed migration steps';
