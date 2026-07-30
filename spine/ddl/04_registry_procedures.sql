@@ -9,6 +9,10 @@
 -- These mirror spine/lib/registry.py (which stays as the Python reference + unit-test target).
 -- Parameterized by ${catalog}.${schema}. Procedures are multi-statement (INSERT + UPDATE + audit).
 -- SQL SECURITY INVOKER: runs with the caller's privileges.
+--
+-- IMPORTANT: this file must contain ONLY procedures. deploy_spine.py splits procedure files on
+-- 'END;' — any plain DDL (CREATE TABLE, etc.) placed here would be grouped into a procedure
+-- block. Keep plain DDL in 01-03/05.
 
 -- register_object: insert a new object (discovered) or refresh assessment fields if it
 -- already exists; audits 'register' vs 'reregister' — never a phantom 'discovered' on re-scan.

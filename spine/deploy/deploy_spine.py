@@ -72,7 +72,12 @@ for fname in files:
         .replace("${gov_catalog}", gov_catalog)
     )
     # Procedure files (BEGIN...END) need END;-based splitting; plain DDL splits on ';'.
+    # NOTE: a procedure file must contain ONLY procedures — the END;-splitter groups any
+    # plain statement before a procedure into the same block. Keep DDL and procedures in
+    # separate files (they are: 01-03,05 are plain DDL; 04 is procedures only).
     is_proc_file = "CREATE OR REPLACE PROCEDURE" in sql_text
+    if is_proc_file and "CREATE TABLE" in sql_text.upper():
+        raise ValueError(f"{fname}: mixes procedures and plain DDL — split into separate files")
     stmts = split_procedures(sql_text) if is_proc_file else split_statements(sql_text)
     for stmt in stmts:
         print(f"[{fname}] {stmt.splitlines()[0][:80]}...")
@@ -80,9 +85,12 @@ for fname in files:
             spark.sql(stmt)
         except Exception as e:
             # The governance view (05) references governance.pipeline_audit, which may not
-            # exist in every engagement. It's optional enrichment — warn and continue.
-            if "05_governance" in fname:
-                print(f"  SKIPPED (optional governance view): {str(e)[:120]}")
+            # exist in every engagement. Skip ONLY that "missing table" case; re-raise real bugs.
+            msg = str(e).lower()
+            is_missing = any(s in msg for s in ("not found", "does not exist", "cannot be found",
+                                                "table_or_view_not_found"))
+            if "05_governance" in fname and is_missing:
+                print(f"  SKIPPED (optional governance view — governance.pipeline_audit absent): {str(e)[:100]}")
             else:
                 raise
 
