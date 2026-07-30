@@ -1,0 +1,698 @@
+<?xml version="1.0"?>
+<AlteryxDocument yxmdVer="2024.1">
+  <Nodes>
+    <!-- Input 1: Transactions -->
+    <Node ToolID="1">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="50" y="50"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Read Transactions</Name>
+            <AnnotationText>Load transaction-level data: transaction_id, store_id, product_id, date, qty, unit_price</AnnotationText>
+          </Annotation>
+          <File path="\\data\transactions.csv" />
+          <Delimiter>,</Delimiter>
+          <Header>true</Header>
+          <Quote>"</Quote>
+        </Configuration>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="transaction_id" source="File: transactions.csv" type="Int32" />
+            <Field name="store_id" source="File: transactions.csv" type="Int32" />
+            <Field name="product_id" source="File: transactions.csv" type="Int32" />
+            <Field name="date" source="File: transactions.csv" type="String" />
+            <Field name="qty" source="File: transactions.csv" type="Int32" />
+            <Field name="unit_price" source="File: transactions.csv" type="Double" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.DbFileInput.DbFileInput" />
+    </Node>
+
+    <!-- Input 2: Products -->
+    <Node ToolID="2">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="50" y="150"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Read Products</Name>
+            <AnnotationText>Load product master: product_id, product_name, category, supplier_id, cost_price</AnnotationText>
+          </Annotation>
+          <File path="\\data\products.csv" />
+          <Delimiter>,</Delimiter>
+          <Header>true</Header>
+          <Quote>"</Quote>
+        </Configuration>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="product_id" source="File: products.csv" type="Int32" />
+            <Field name="product_name" source="File: products.csv" type="String" />
+            <Field name="category" source="File: products.csv" type="String" />
+            <Field name="supplier_id" source="File: products.csv" type="Int32" />
+            <Field name="cost_price" source="File: products.csv" type="Double" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.DbFileInput.DbFileInput" />
+    </Node>
+
+    <!-- Input 3: Stores -->
+    <Node ToolID="3">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="50" y="250"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Read Stores</Name>
+            <AnnotationText>Load store master: store_id, store_name, region, manager_id, store_type</AnnotationText>
+          </Annotation>
+          <File path="\\data\stores.csv" />
+          <Delimiter>,</Delimiter>
+          <Header>true</Header>
+          <Quote>"</Quote>
+        </Configuration>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="store_id" source="File: stores.csv" type="Int32" />
+            <Field name="store_name" source="File: stores.csv" type="String" />
+            <Field name="region" source="File: stores.csv" type="String" />
+            <Field name="manager_id" source="File: stores.csv" type="Int32" />
+            <Field name="store_type" source="File: stores.csv" type="String" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.DbFileInput.DbFileInput" />
+    </Node>
+
+    <!-- Filter: Date Range & Valid Transactions -->
+    <Node ToolID="4">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Filter.Filter">
+        <Position x="250" y="50"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Filter by Date Range</Name>
+            <AnnotationText>TODO: DateTimeParse() needs manual review - no direct Spark equivalent. Filter transactions between 2024-01-01 and 2024-12-31</AnnotationText>
+          </Annotation>
+          <Expression>[date] &gt;= DateTimeParse("2024-01-01", "%Y-%m-%d") AND [date] &lt;= DateTimeParse("2024-12-31", "%Y-%m-%d") AND [qty] &gt; 0</Expression>
+        </Configuration>
+        <MetaInfo connection="True">
+          <RecordInfo>
+            <Field name="transaction_id" source="File: transactions.csv" type="Int32" />
+            <Field name="store_id" source="File: transactions.csv" type="Int32" />
+            <Field name="product_id" source="File: transactions.csv" type="Int32" />
+            <Field name="date" source="File: transactions.csv" type="String" />
+            <Field name="qty" source="File: transactions.csv" type="Int32" />
+            <Field name="unit_price" source="File: transactions.csv" type="Double" />
+          </RecordInfo>
+        </MetaInfo>
+        <MetaInfo connection="False">
+          <RecordInfo>
+            <Field name="transaction_id" source="File: transactions.csv" type="Int32" />
+            <Field name="store_id" source="File: transactions.csv" type="Int32" />
+            <Field name="product_id" source="File: transactions.csv" type="Int32" />
+            <Field name="date" source="File: transactions.csv" type="String" />
+            <Field name="qty" source="File: transactions.csv" type="Int32" />
+            <Field name="unit_price" source="File: transactions.csv" type="Double" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.Filter.Filter" />
+    </Node>
+
+    <!-- Formula 1: Calculate Extended Price -->
+    <Node ToolID="5">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula">
+        <Position x="450" y="50"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Calculate Extended Price</Name>
+            <AnnotationText>Compute line item total and margin calculations</AnnotationText>
+          </Annotation>
+          <FormulaFields>
+            <FormulaField expression="[qty] * [unit_price]" field="extended_price" type="Double" size="8" />
+            <FormulaField expression="[extended_price] * 0.10" field="discount_amount" type="Double" size="8" />
+            <FormulaField expression="[extended_price] - [discount_amount]" field="net_sales" type="Double" size="8" />
+            <FormulaField expression="DateTimeYear([date])" field="year" type="Int32" size="4" />
+            <FormulaField expression="DateTimeMonth([date])" field="month" type="Int32" size="4" />
+          </FormulaFields>
+        </Configuration>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="transaction_id" source="File: transactions.csv" type="Int32" />
+            <Field name="store_id" source="File: transactions.csv" type="Int32" />
+            <Field name="product_id" source="File: transactions.csv" type="Int32" />
+            <Field name="date" source="File: transactions.csv" type="String" />
+            <Field name="qty" source="File: transactions.csv" type="Int32" />
+            <Field name="unit_price" source="File: transactions.csv" type="Double" />
+            <Field name="extended_price" source="Formula" type="Double" size="8" />
+            <Field name="discount_amount" source="Formula" type="Double" size="8" />
+            <Field name="net_sales" source="Formula" type="Double" size="8" />
+            <Field name="year" source="Formula" type="Int32" size="4" />
+            <Field name="month" source="Formula" type="Int32" size="4" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.Formula.Formula" />
+    </Node>
+
+    <!-- Join 1: Transactions with Products -->
+    <Node ToolID="6">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Join.Join">
+        <Position x="650" y="50"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Join with Products</Name>
+            <AnnotationText>Left join transactions (enriched) with product master on product_id</AnnotationText>
+          </Annotation>
+          <JoinInfo connection="Left">
+            <Field field="product_id" />
+          </JoinInfo>
+          <JoinInfo connection="Right">
+            <Field field="product_id" />
+          </JoinInfo>
+          <JoinType>Left Outer Join</JoinType>
+          <TreatTextNumAsText>false</TreatTextNumAsText>
+          <CaseInsensitiveJoin>false</CaseInsensitiveJoin>
+          <Collation>BIN2_UTF8</Collation>
+        </Configuration>
+        <MetaInfo connection="Left Output">
+          <RecordInfo>
+            <Field name="transaction_id" source="File: transactions.csv" type="Int32" />
+            <Field name="store_id" source="File: transactions.csv" type="Int32" />
+            <Field name="product_id" source="File: transactions.csv" type="Int32" />
+            <Field name="date" source="File: transactions.csv" type="String" />
+            <Field name="qty" source="File: transactions.csv" type="Int32" />
+            <Field name="unit_price" source="File: transactions.csv" type="Double" />
+            <Field name="extended_price" source="Formula" type="Double" size="8" />
+            <Field name="discount_amount" source="Formula" type="Double" size="8" />
+            <Field name="net_sales" source="Formula" type="Double" size="8" />
+            <Field name="year" source="Formula" type="Int32" size="4" />
+            <Field name="month" source="Formula" type="Int32" size="4" />
+            <Field name="product_name" source="File: products.csv" type="String" />
+            <Field name="category" source="File: products.csv" type="String" />
+            <Field name="supplier_id" source="File: products.csv" type="Int32" />
+            <Field name="cost_price" source="File: products.csv" type="Double" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.Join.Join" />
+    </Node>
+
+    <!-- Select: Choose Relevant Columns -->
+    <Node ToolID="7">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="850" y="50"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Select Columns</Name>
+            <AnnotationText>Keep relevant columns for downstream processing; drop internal keys</AnnotationText>
+          </Annotation>
+          <OrderChanged value="false" />
+          <SelectFields>
+            <SelectField name="transaction_id" selected="true" />
+            <SelectField name="store_id" selected="true" />
+            <SelectField name="product_id" selected="true" />
+            <SelectField name="date" selected="true" />
+            <SelectField name="qty" selected="true" />
+            <SelectField name="unit_price" selected="true" />
+            <SelectField name="extended_price" selected="true" />
+            <SelectField name="net_sales" selected="true" />
+            <SelectField name="year" selected="true" />
+            <SelectField name="month" selected="true" />
+            <SelectField name="product_name" selected="true" />
+            <SelectField name="category" selected="true" />
+            <SelectField name="supplier_id" selected="false" />
+            <SelectField name="cost_price" selected="true" />
+            <SelectField name="discount_amount" selected="false" />
+          </SelectFields>
+        </Configuration>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="transaction_id" source="File: transactions.csv" type="Int32" />
+            <Field name="store_id" source="File: transactions.csv" type="Int32" />
+            <Field name="product_id" source="File: transactions.csv" type="Int32" />
+            <Field name="date" source="File: transactions.csv" type="String" />
+            <Field name="qty" source="File: transactions.csv" type="Int32" />
+            <Field name="unit_price" source="File: transactions.csv" type="Double" />
+            <Field name="extended_price" source="Formula" type="Double" size="8" />
+            <Field name="net_sales" source="Formula" type="Double" size="8" />
+            <Field name="year" source="Formula" type="Int32" size="4" />
+            <Field name="month" source="Formula" type="Int32" size="4" />
+            <Field name="product_name" source="File: products.csv" type="String" />
+            <Field name="category" source="File: products.csv" type="String" />
+            <Field name="cost_price" source="File: products.csv" type="Double" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect" />
+    </Node>
+
+    <!-- Join 2: With Stores (creates DAG split point) -->
+    <Node ToolID="8">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Join.Join">
+        <Position x="1050" y="50"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Join with Stores</Name>
+            <AnnotationText>Left join enriched transactions with store master on store_id. Branches to two paths: summarization and detail.</AnnotationText>
+          </Annotation>
+          <JoinInfo connection="Left">
+            <Field field="store_id" />
+          </JoinInfo>
+          <JoinInfo connection="Right">
+            <Field field="store_id" />
+          </JoinInfo>
+          <JoinType>Left Outer Join</JoinType>
+          <TreatTextNumAsText>false</TreatTextNumAsText>
+          <CaseInsensitiveJoin>false</CaseInsensitiveJoin>
+          <Collation>BIN2_UTF8</Collation>
+        </Configuration>
+        <MetaInfo connection="Left Output">
+          <RecordInfo>
+            <Field name="transaction_id" source="File: transactions.csv" type="Int32" />
+            <Field name="store_id" source="File: transactions.csv" type="Int32" />
+            <Field name="product_id" source="File: transactions.csv" type="Int32" />
+            <Field name="date" source="File: transactions.csv" type="String" />
+            <Field name="qty" source="File: transactions.csv" type="Int32" />
+            <Field name="unit_price" source="File: transactions.csv" type="Double" />
+            <Field name="extended_price" source="Formula" type="Double" size="8" />
+            <Field name="net_sales" source="Formula" type="Double" size="8" />
+            <Field name="year" source="Formula" type="Int32" size="4" />
+            <Field name="month" source="Formula" type="Int32" size="4" />
+            <Field name="product_name" source="File: products.csv" type="String" />
+            <Field name="category" source="File: products.csv" type="String" />
+            <Field name="cost_price" source="File: products.csv" type="Double" />
+            <Field name="store_name" source="File: stores.csv" type="String" />
+            <Field name="region" source="File: stores.csv" type="String" />
+            <Field name="manager_id" source="File: stores.csv" type="Int32" />
+            <Field name="store_type" source="File: stores.csv" type="String" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.Join.Join" />
+    </Node>
+
+    <!-- BRANCH A: Summarize to Gold Summary -->
+    <Node ToolID="9">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Summarize.Summarize">
+        <Position x="1250" y="50"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Summarize Sales by Product &amp; Store</Name>
+            <AnnotationText>Aggregate sales metrics: total sales, item count, average price by product and store</AnnotationText>
+          </Annotation>
+          <GroupFields>
+            <GroupField field="year" />
+            <GroupField field="month" />
+            <GroupField field="product_id" />
+            <GroupField field="product_name" />
+            <GroupField field="category" />
+            <GroupField field="store_id" />
+            <GroupField field="store_name" />
+            <GroupField field="region" />
+          </GroupFields>
+          <AggregateFields>
+            <AggregateField field="qty" operation="Sum" />
+            <AggregateField field="net_sales" operation="Sum" />
+            <AggregateField field="extended_price" operation="Sum" />
+            <AggregateField field="unit_price" operation="Avg" />
+            <AggregateField field="cost_price" operation="Avg" />
+            <AggregateField field="transaction_id" operation="Count" />
+          </AggregateFields>
+        </Configuration>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="year" source="Summarize" type="Int32" size="4" />
+            <Field name="month" source="Summarize" type="Int32" size="4" />
+            <Field name="product_id" source="Summarize" type="Int32" />
+            <Field name="product_name" source="Summarize" type="String" />
+            <Field name="category" source="Summarize" type="String" />
+            <Field name="store_id" source="Summarize" type="Int32" />
+            <Field name="store_name" source="Summarize" type="String" />
+            <Field name="region" source="Summarize" type="String" />
+            <Field name="Sum_qty" source="Summarize" type="Int64" size="8" />
+            <Field name="Sum_net_sales" source="Summarize" type="Double" size="8" />
+            <Field name="Sum_extended_price" source="Summarize" type="Double" size="8" />
+            <Field name="Avg_unit_price" source="Summarize" type="Double" size="8" />
+            <Field name="Avg_cost_price" source="Summarize" type="Double" size="8" />
+            <Field name="Count_transaction_id" source="Summarize" type="Int64" size="8" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.Summarize.Summarize" />
+    </Node>
+
+    <!-- Formula 2: Advanced Calculations on Gold -->
+    <Node ToolID="10">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula">
+        <Position x="1450" y="50"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Calculate Margin &amp; KPIs</Name>
+            <AnnotationText>Compute gross margin, margin %, and other performance metrics</AnnotationText>
+          </Annotation>
+          <FormulaFields>
+            <FormulaField expression="[Sum_net_sales] - ([Sum_extended_price] * 0.60)" field="gross_margin" type="Double" size="8" />
+            <FormulaField expression="([gross_margin] / [Sum_net_sales]) * 100" field="margin_percent" type="Double" size="8" />
+            <FormulaField expression="[Sum_net_sales] / [Count_transaction_id]" field="avg_transaction_value" type="Double" size="8" />
+            <FormulaField expression="IF([Sum_qty] &gt; 1000, 'High Volume', IF([Sum_qty] &gt; 100, 'Medium Volume', 'Low Volume'))" field="volume_tier" type="String" size="20" />
+          </FormulaFields>
+        </Configuration>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="year" source="Summarize" type="Int32" size="4" />
+            <Field name="month" source="Summarize" type="Int32" size="4" />
+            <Field name="product_id" source="Summarize" type="Int32" />
+            <Field name="product_name" source="Summarize" type="String" />
+            <Field name="category" source="Summarize" type="String" />
+            <Field name="store_id" source="Summarize" type="Int32" />
+            <Field name="store_name" source="Summarize" type="String" />
+            <Field name="region" source="Summarize" type="String" />
+            <Field name="Sum_qty" source="Summarize" type="Int64" size="8" />
+            <Field name="Sum_net_sales" source="Summarize" type="Double" size="8" />
+            <Field name="Sum_extended_price" source="Summarize" type="Double" size="8" />
+            <Field name="Avg_unit_price" source="Summarize" type="Double" size="8" />
+            <Field name="Avg_cost_price" source="Summarize" type="Double" size="8" />
+            <Field name="Count_transaction_id" source="Summarize" type="Int64" size="8" />
+            <Field name="gross_margin" source="Formula" type="Double" size="8" />
+            <Field name="margin_percent" source="Formula" type="Double" size="8" />
+            <Field name="avg_transaction_value" source="Formula" type="Double" size="8" />
+            <Field name="volume_tier" source="Formula" type="String" size="20" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.Formula.Formula" />
+    </Node>
+
+    <!-- BRANCH B: Detail Path - Sort -->
+    <Node ToolID="12">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Sort.Sort">
+        <Position x="1250" y="200"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Sort by Date &amp; Product</Name>
+            <AnnotationText>Sort detail records chronologically for window function application</AnnotationText>
+          </Annotation>
+          <SortFields>
+            <SortField field="store_id" order="Ascending" />
+            <SortField field="product_id" order="Ascending" />
+            <SortField field="date" order="Ascending" />
+          </SortFields>
+        </Configuration>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="transaction_id" source="File: transactions.csv" type="Int32" />
+            <Field name="store_id" source="File: transactions.csv" type="Int32" />
+            <Field name="product_id" source="File: transactions.csv" type="Int32" />
+            <Field name="date" source="File: transactions.csv" type="String" />
+            <Field name="qty" source="File: transactions.csv" type="Int32" />
+            <Field name="unit_price" source="File: transactions.csv" type="Double" />
+            <Field name="extended_price" source="Formula" type="Double" size="8" />
+            <Field name="net_sales" source="Formula" type="Double" size="8" />
+            <Field name="year" source="Formula" type="Int32" size="4" />
+            <Field name="month" source="Formula" type="Int32" size="4" />
+            <Field name="product_name" source="File: products.csv" type="String" />
+            <Field name="category" source="File: products.csv" type="String" />
+            <Field name="cost_price" source="File: products.csv" type="Double" />
+            <Field name="store_name" source="File: stores.csv" type="String" />
+            <Field name="region" source="File: stores.csv" type="String" />
+            <Field name="manager_id" source="File: stores.csv" type="Int32" />
+            <Field name="store_type" source="File: stores.csv" type="String" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.Sort.Sort" />
+    </Node>
+
+    <!-- MultiRowFormula: Running Total (Manual Review - Row Reference) -->
+    <Node ToolID="11">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.MultiRowFormula.MultiRowFormula">
+        <Position x="1450" y="200"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Calculate Running Total</Name>
+            <AnnotationText>TODO: MultiRowFormula with row-level references [Row-1:net_sales] needs Spark window function review. Calculate cumulative sales per store-product.</AnnotationText>
+          </Annotation>
+          <GroupByFields>
+            <GroupByField field="store_id" />
+            <GroupByField field="product_id" />
+          </GroupByFields>
+          <FormulaFields>
+            <FormulaField expression="IF(IsNull([Row-1:running_total]) || [store_id] != [Row-1:store_id] || [product_id] != [Row-1:product_id], [net_sales], [Row-1:running_total] + [net_sales])" field="running_total" type="Double" size="8" />
+            <FormulaField expression="IF(IsNull([Row-1:net_sales]), NULL(), [net_sales] - [Row-1:net_sales])" field="daily_delta" type="Double" size="8" />
+          </FormulaFields>
+        </Configuration>
+        <MetaInfo connection="Output">
+          <RecordInfo>
+            <Field name="transaction_id" source="File: transactions.csv" type="Int32" />
+            <Field name="store_id" source="File: transactions.csv" type="Int32" />
+            <Field name="product_id" source="File: transactions.csv" type="Int32" />
+            <Field name="date" source="File: transactions.csv" type="String" />
+            <Field name="qty" source="File: transactions.csv" type="Int32" />
+            <Field name="unit_price" source="File: transactions.csv" type="Double" />
+            <Field name="extended_price" source="Formula" type="Double" size="8" />
+            <Field name="net_sales" source="Formula" type="Double" size="8" />
+            <Field name="year" source="Formula" type="Int32" size="4" />
+            <Field name="month" source="Formula" type="Int32" size="4" />
+            <Field name="product_name" source="File: products.csv" type="String" />
+            <Field name="category" source="File: products.csv" type="String" />
+            <Field name="cost_price" source="File: products.csv" type="Double" />
+            <Field name="store_name" source="File: stores.csv" type="String" />
+            <Field name="region" source="File: stores.csv" type="String" />
+            <Field name="manager_id" source="File: stores.csv" type="Int32" />
+            <Field name="store_type" source="File: stores.csv" type="String" />
+            <Field name="running_total" source="MultiRowFormula" type="Double" size="8" />
+            <Field name="daily_delta" source="MultiRowFormula" type="Double" size="8" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.MultiRowFormula.MultiRowFormula" />
+    </Node>
+
+    <!-- Unique: Remove Duplicates from Detail Stream -->
+    <Node ToolID="13">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Unique.Unique">
+        <Position x="1650" y="200"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Get Unique Detail Records</Name>
+            <AnnotationText>Remove duplicate transaction IDs; keep first occurrence</AnnotationText>
+          </Annotation>
+          <UniqueFields>
+            <UniqueField field="transaction_id" />
+          </UniqueFields>
+        </Configuration>
+        <MetaInfo connection="Unique">
+          <RecordInfo>
+            <Field name="transaction_id" source="File: transactions.csv" type="Int32" />
+            <Field name="store_id" source="File: transactions.csv" type="Int32" />
+            <Field name="product_id" source="File: transactions.csv" type="Int32" />
+            <Field name="date" source="File: transactions.csv" type="String" />
+            <Field name="qty" source="File: transactions.csv" type="Int32" />
+            <Field name="unit_price" source="File: transactions.csv" type="Double" />
+            <Field name="extended_price" source="Formula" type="Double" size="8" />
+            <Field name="net_sales" source="Formula" type="Double" size="8" />
+            <Field name="year" source="Formula" type="Int32" size="4" />
+            <Field name="month" source="Formula" type="Int32" size="4" />
+            <Field name="product_name" source="File: products.csv" type="String" />
+            <Field name="category" source="File: products.csv" type="String" />
+            <Field name="cost_price" source="File: products.csv" type="Double" />
+            <Field name="store_name" source="File: stores.csv" type="String" />
+            <Field name="region" source="File: stores.csv" type="String" />
+            <Field name="manager_id" source="File: stores.csv" type="Int32" />
+            <Field name="store_type" source="File: stores.csv" type="String" />
+            <Field name="running_total" source="MultiRowFormula" type="Double" size="8" />
+            <Field name="daily_delta" source="MultiRowFormula" type="Double" size="8" />
+          </RecordInfo>
+        </MetaInfo>
+        <MetaInfo connection="Duplicate">
+          <RecordInfo>
+            <Field name="transaction_id" source="File: transactions.csv" type="Int32" />
+            <Field name="store_id" source="File: transactions.csv" type="Int32" />
+            <Field name="product_id" source="File: transactions.csv" type="Int32" />
+            <Field name="date" source="File: transactions.csv" type="String" />
+            <Field name="qty" source="File: transactions.csv" type="Int32" />
+            <Field name="unit_price" source="File: transactions.csv" type="Double" />
+            <Field name="extended_price" source="Formula" type="Double" size="8" />
+            <Field name="net_sales" source="Formula" type="Double" size="8" />
+            <Field name="year" source="Formula" type="Int32" size="4" />
+            <Field name="month" source="Formula" type="Int32" size="4" />
+            <Field name="product_name" source="File: products.csv" type="String" />
+            <Field name="category" source="File: products.csv" type="String" />
+            <Field name="cost_price" source="File: products.csv" type="Double" />
+            <Field name="store_name" source="File: stores.csv" type="String" />
+            <Field name="region" source="File: stores.csv" type="String" />
+            <Field name="manager_id" source="File: stores.csv" type="Int32" />
+            <Field name="store_type" source="File: stores.csv" type="String" />
+            <Field name="running_total" source="MultiRowFormula" type="Double" size="8" />
+            <Field name="daily_delta" source="MultiRowFormula" type="Double" size="8" />
+          </RecordInfo>
+        </MetaInfo>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.Unique.Unique" />
+    </Node>
+
+    <!-- Output 1: Gold Summary (Branch A) -->
+    <Node ToolID="14">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput">
+        <Position x="1650" y="50"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Write Gold Summary</Name>
+            <AnnotationText>Aggregated sales summary: product, store, region, margins, volume tiers</AnnotationText>
+          </Annotation>
+          <File path="\\output\gold_sales_summary.csv" />
+          <Delimiter>,</Delimiter>
+          <QuoteFields>true</QuoteFields>
+          <WriteHeaderRow>true</WriteHeaderRow>
+          <IncludeQuoteEscaping>false</IncludeQuoteEscaping>
+        </Configuration>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput" />
+    </Node>
+
+    <!-- Output 2: Detail Extract (Branch B) -->
+    <Node ToolID="15">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput">
+        <Position x="1850" y="200"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Annotation DisplayMode="0">
+            <Name>Write Detail Extract</Name>
+            <AnnotationText>Transaction-level detail with running totals and daily deltas</AnnotationText>
+          </Annotation>
+          <File path="\\output\detail_transactions_with_running_total.csv" />
+          <Delimiter>,</Delimiter>
+          <QuoteFields>true</QuoteFields>
+          <WriteHeaderRow>true</WriteHeaderRow>
+          <IncludeQuoteEscaping>false</IncludeQuoteEscaping>
+        </Configuration>
+      </Properties>
+      <EngineSettings EngineDll="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput" />
+    </Node>
+  </Nodes>
+
+  <Connections>
+    <!-- Read Transactions to Filter -->
+    <Connection>
+      <Origin ToolID="1" OutputIdx="0"/>
+      <Destination ToolID="4" InputIdx="0"/>
+    </Connection>
+    <!-- Filter to Formula 1 -->
+    <Connection>
+      <Origin ToolID="4" OutputIdx="0"/>
+      <Destination ToolID="5" InputIdx="0"/>
+    </Connection>
+    <!-- Formula 1 to Join 1 (Left) -->
+    <Connection>
+      <Origin ToolID="5" OutputIdx="0"/>
+      <Destination ToolID="6" InputIdx="0"/>
+    </Connection>
+    <!-- Read Products to Join 1 (Right) -->
+    <Connection>
+      <Origin ToolID="2" OutputIdx="0"/>
+      <Destination ToolID="6" InputIdx="1"/>
+    </Connection>
+    <!-- Join 1 to Select -->
+    <Connection>
+      <Origin ToolID="6" OutputIdx="0"/>
+      <Destination ToolID="7" InputIdx="0"/>
+    </Connection>
+    <!-- Select to Join 2 (Left) -->
+    <Connection>
+      <Origin ToolID="7" OutputIdx="0"/>
+      <Destination ToolID="8" InputIdx="0"/>
+    </Connection>
+    <!-- Read Stores to Join 2 (Right) -->
+    <Connection>
+      <Origin ToolID="3" OutputIdx="0"/>
+      <Destination ToolID="8" InputIdx="1"/>
+    </Connection>
+    <!-- Join 2 to Summarize (Branch A) -->
+    <Connection>
+      <Origin ToolID="8" OutputIdx="0"/>
+      <Destination ToolID="9" InputIdx="0"/>
+    </Connection>
+    <!-- Summarize to Formula 2 -->
+    <Connection>
+      <Origin ToolID="9" OutputIdx="0"/>
+      <Destination ToolID="10" InputIdx="0"/>
+    </Connection>
+    <!-- Formula 2 to Gold Output -->
+    <Connection>
+      <Origin ToolID="10" OutputIdx="0"/>
+      <Destination ToolID="14" InputIdx="0"/>
+    </Connection>
+    <!-- Join 2 to Sort (Branch B) -->
+    <Connection>
+      <Origin ToolID="8" OutputIdx="0"/>
+      <Destination ToolID="12" InputIdx="0"/>
+    </Connection>
+    <!-- Sort to MultiRowFormula -->
+    <Connection>
+      <Origin ToolID="12" OutputIdx="0"/>
+      <Destination ToolID="11" InputIdx="0"/>
+    </Connection>
+    <!-- MultiRowFormula to Unique -->
+    <Connection>
+      <Origin ToolID="11" OutputIdx="0"/>
+      <Destination ToolID="13" InputIdx="0"/>
+    </Connection>
+    <!-- Unique to Detail Output -->
+    <Connection>
+      <Origin ToolID="13" OutputIdx="0"/>
+      <Destination ToolID="15" InputIdx="0"/>
+    </Connection>
+  </Connections>
+
+  <Properties>
+    <Memory default="true" />
+    <GlobalRecordLimit value="0" />
+    <TempFiles default="true" />
+    <Annotation on="true" />
+    <ConvErrorLimit value="10" />
+    <ConvErrorLimit_Pct value="10" />
+    <ConvErrorLocale DisplayString="English_United States" />
+    <ConvErrorLimit_Behavior ExternalFiles="1" PartialLoad="0" RemoteAPI="1" />
+    <CompressTempFiles value="false" />
+    <StartupMode value="0" />
+  </Properties>
+
+  <EngineSettings EngineDll="AlteryxBasePluginsGui.Engine.Engine" />
+
+  <DocumentMetadata>
+    <Author value="Sample Generated Workflow" />
+    <Comment value="Complex Sales Analytics Workflow for Alteryx-to-Databricks Migration Testing" />
+    <Company value="Databricks" />
+    <Category value="" />
+    <SaveHistory value="false" />
+  </DocumentMetadata>
+</AlteryxDocument>

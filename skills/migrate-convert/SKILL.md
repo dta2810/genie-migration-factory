@@ -63,7 +63,10 @@ Target-specific guides — open the ONE matching the configured `target`:
   - `sdp` — Lakeflow Spark Declarative Pipeline (`@dp` Python or LDP SQL).
   - `notebook_job` — notebooks + a Lakeflow Job wiring the tasks; use the **ai-dev-kit MCP tools**
     (`manage_jobs`, `create_pipeline`) to create the job rather than hand-writing job JSON.
-  - `dbsql` — Databricks SQL files + a SQL Warehouse job.
+    **Write the notebooks into the `output_dir` from config** (e.g. one per medallion layer:
+    `<output_dir>/bronze_ingest`, `/silver_transform`, `/gold_aggregate`); the job's
+    `notebook_task.notebook_path` points there. See `references/target-notebook-job.md`.
+  - `dbsql` — Databricks SQL files + a SQL Warehouse job (files under `output_dir`).
 - Where a construct has no clean equivalent (macros, R/Python tool, dynamic input, untranslated
   function), leave a clear `-- TODO:` marker in the output describing what needs manual work.
 
