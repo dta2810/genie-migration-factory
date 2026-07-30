@@ -50,13 +50,27 @@ Forecast items that will need manual review and record them as **todos** (not ye
 - Alteryx functions with no direct Spark equivalent → `untranslated_fn`
 - Dynamic Input / Dynamic Rename → `manual_review`
 
-### 4. Register into the spine
-For each object, call the registry API (`spine/lib/registry.py`) via SQL/MCP:
-- Insert/upsert a row in `objects` (`status='assessed'`, `complexity`, `volume_path`,
-  proposed `target_uc_fqn`, `layer`).
-- Insert `todos` rows for each forecast item, ranked by `severity`.
-- Insert a `runs` row (`step='assess'`, `engine='genie_code'`, `outcome`).
-- Insert an `audit` row for the `discovered → assessed` transition (actor, config_hash, detail).
+### 4. Register into the spine — ALWAYS via the UC procedures (never raw INSERT/UPDATE)
+The registry exposes procedures under `${catalog}.${schema}` that write state AND the audit
+row together, so the audit trail stays complete by construction. Call them with `CALL`; do NOT
+hand-write INSERT/UPDATE against `objects`/`audit`/`runs`/`todos`.
+
+```sql
+-- 1. register the object (idempotent: refreshes assessment fields on re-scan)
+CALL <catalog>.<schema>.register_object(
+  'alteryx:<name>', 'alteryx', 'workflow', '<volume_path>', NULL,
+  '<catalog>.<schema>.<target>', 'gold', 'medium');
+-- 2. open the assess run (you supply the run_id)
+CALL <catalog>.<schema>.start_run('assess-<name>-<ts>', 'alteryx:<name>', 'assess', 'genie_code');
+-- 3. one add_todo per forecast item
+CALL <catalog>.<schema>.add_todo('alteryx:<name>', 'untranslated_fn', '<message>', 'warning');
+-- 4. advance status (writes the discovered->assessed audit row automatically)
+CALL <catalog>.<schema>.transition('alteryx:<name>', 'assessed', NULL, NULL, NULL, '<detail>', 'assess-<name>-<ts>');
+-- 5. close the run
+CALL <catalog>.<schema>.end_run('assess-<name>-<ts>', 'ok');
+```
+Also seed engagement config the first time (target type, thresholds):
+`CALL <catalog>.<schema>.set_config('target', 'sdp');`
 
 ### 5. Report
 Summarize to the user: N objects registered, complexity breakdown, top TODOs, and the suggested

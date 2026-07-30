@@ -42,6 +42,23 @@ def split_statements(text):
     return [s.strip() for s in no_comments.split(";") if s.strip()]
 
 
+def split_procedures(text):
+    # Procedures contain ';' inside BEGIN...END, so split on the closing 'END;' line only.
+    no_comments = "\n".join(
+        ln for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("--")
+    )
+    blocks, cur = [], []
+    for ln in no_comments.splitlines():
+        cur.append(ln)
+        if ln.strip() == "END;":
+            blocks.append("\n".join(cur).strip())
+            cur = []
+    tail = "\n".join(cur).strip()
+    if tail:
+        blocks.append(tail)
+    return blocks
+
+
 for fname in files:
     with open(os.path.join(ddl_path, fname)) as fh:
         raw = fh.read()
@@ -50,7 +67,10 @@ for fname in files:
         .replace("${schema}", schema)
         .replace("${volume}", volume)
     )
-    for stmt in split_statements(sql_text):
+    # Procedure files (BEGIN...END) need END;-based splitting; plain DDL splits on ';'.
+    is_proc_file = "CREATE OR REPLACE PROCEDURE" in sql_text
+    stmts = split_procedures(sql_text) if is_proc_file else split_statements(sql_text)
+    for stmt in stmts:
         print(f"[{fname}] {stmt.splitlines()[0][:80]}...")
         spark.sql(stmt)
 
