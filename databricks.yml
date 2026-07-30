@@ -1,0 +1,24 @@
+bundle:
+  name: genie-migration-factory
+
+variables:
+  catalog_name:
+    description: Unity Catalog for the migration registry
+    default: migration_factory
+  client_schema:
+    description: Schema for this migration engagement (one per client)
+    default: sandbox
+  volume_name:
+    description: Volume holding source artifacts + generated output
+    default: raw
+
+workspace:
+  host: https://fevm-dt-serverless-stable-isqgt5.cloud.databricks.com
+
+include:
+  - resources/*.yml
+
+targets:
+  dev:
+    mode: development
+    default: true

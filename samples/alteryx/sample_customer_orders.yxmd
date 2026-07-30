@@ -1,0 +1,273 @@
+<?xml version="1.0"?>
+<AlteryxDocument yxmdVer="2024.1" RecordCacheMetafile="">
+  <Nodes>
+    <Node ToolID="1">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="60" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Passwords/>
+          <File>C:\Data\orders.csv</File>
+          <ParseAllNumbersAsString>False</ParseAllNumbersAsString>
+          <MultiFile value="False"/>
+          <ReverseWriter value="True"/>
+          <FormatSpecificOptions>
+            <LineNumbers value="False"/>
+            <CodePage value="28591"/>
+            <Delimeter>,</Delimeter>
+            <AllowShareWrite value="False"/>
+            <HeaderRow value="True"/>
+            <IgnoreErrors value="False"/>
+            <AllowTrailingDelimiter value="False"/>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Input - Orders CSV</Name>
+          <AnnotationText>Load customer orders data</AnnotationText>
+        </Annotation>
+      </Properties>
+      <OutPorts>
+        <OutPort Name="Output" Source="DbFileInput_1"/>
+      </OutPorts>
+    </Node>
+    <Node ToolID="2">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileInput.DbFileInput">
+        <Position x="60" y="150"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Passwords/>
+          <File>C:\Data\customers.csv</File>
+          <ParseAllNumbersAsString>False</ParseAllNumbersAsString>
+          <MultiFile value="False"/>
+          <ReverseWriter value="True"/>
+          <FormatSpecificOptions>
+            <LineNumbers value="False"/>
+            <CodePage value="28591"/>
+            <Delimeter>,</Delimeter>
+            <AllowShareWrite value="False"/>
+            <HeaderRow value="True"/>
+            <IgnoreErrors value="False"/>
+            <AllowTrailingDelimiter value="False"/>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Input - Customers CSV</Name>
+          <AnnotationText>Load customer reference data</AnnotationText>
+        </Annotation>
+      </Properties>
+      <OutPorts>
+        <OutPort Name="Output" Source="DbFileInput_2"/>
+      </OutPorts>
+    </Node>
+    <Node ToolID="3">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.AlteryxSelect.AlteryxSelect">
+        <Position x="200" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <OrderChanged value="False"/>
+          <CommaDecimal value="False"/>
+          <SelectFields>
+            <SelectField field="order_id" selected="True"/>
+            <SelectField field="customer_id" selected="True"/>
+            <SelectField field="order_date" selected="True"/>
+            <SelectField field="amount" selected="True"/>
+            <SelectField field="status" selected="True"/>
+          </SelectFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Select Fields</Name>
+          <AnnotationText>Keep only relevant order columns</AnnotationText>
+        </Annotation>
+      </Properties>
+      <InPorts>
+        <InPort Connection="Node_1" Name="Input" Source="DbFileInput_1"/>
+      </InPorts>
+      <OutPorts>
+        <OutPort Name="Output" Source="AlteryxSelect_1"/>
+      </OutPorts>
+    </Node>
+    <Node ToolID="4">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Filter.Filter">
+        <Position x="350" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <Mode>Simple</Mode>
+          <Simple>
+            <Operator>==</Operator>
+            <Field>status</Field>
+            <Cells value="1">
+              <Condition expr="Completed"/>
+            </Cells>
+            <JoinOperator value="AND"/>
+          </Simple>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Filter - Completed Orders</Name>
+          <AnnotationText>Only include completed orders</AnnotationText>
+        </Annotation>
+      </Properties>
+      <InPorts>
+        <InPort Connection="Node_3" Name="Input" Source="AlteryxSelect_1"/>
+      </InPorts>
+      <OutPorts>
+        <OutPort Name="True" Source="Filter_1_True"/>
+        <OutPort Name="False" Source="Filter_1_False"/>
+      </OutPorts>
+    </Node>
+    <Node ToolID="5">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Formula.Formula">
+        <Position x="500" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <FormulaFields>
+            <FormulaField expression="DateTimeParse([order_date], &quot;%Y-%m-%d&quot;)" field="order_date_parsed" type="Date"/>
+            <FormulaField expression="IF [amount] &gt; 1000 THEN &quot;High&quot; ELSEIF [amount] &gt;= 500 THEN &quot;Medium&quot; ELSE &quot;Low&quot; ENDIF" field="order_category" type="String"/>
+            <FormulaField expression="[amount] * 0.1" field="tax_amount" type="Double"/>
+          </FormulaFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Formula - Enrich</Name>
+          <AnnotationText>Parse dates and calculate derived fields. NOTE: DateTimeParse function may need manual review for Spark compatibility.</AnnotationText>
+        </Annotation>
+      </Properties>
+      <InPorts>
+        <InPort Connection="Node_4" Name="Input" Source="Filter_1_True"/>
+      </InPorts>
+      <OutPorts>
+        <OutPort Name="Output" Source="Formula_1"/>
+      </OutPorts>
+    </Node>
+    <Node ToolID="6">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Join.Join">
+        <Position x="650" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <JoinInfo connection="Right">
+            <Field field="customer_id"/>
+          </JoinInfo>
+          <JoinType value="Inner"/>
+          <TakeFieldsToJoin value="False"/>
+          <TakeAllFields value="True"/>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Join - Orders to Customers</Name>
+          <AnnotationText>Enrich order data with customer attributes</AnnotationText>
+        </Annotation>
+      </Properties>
+      <InPorts>
+        <InPort Connection="Node_5" Name="Left" Source="Formula_1"/>
+        <InPort Connection="Node_2" Name="Right" Source="DbFileInput_2"/>
+      </InPorts>
+      <OutPorts>
+        <OutPort Name="Join" Source="Join_1"/>
+      </OutPorts>
+    </Node>
+    <Node ToolID="7">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.Summarize.Summarize">
+        <Position x="800" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <SummarizeFields>
+            <SummarizeField field="customer_id" action="GroupBy" rename="customer_id"/>
+            <SummarizeField field="order_category" action="GroupBy" rename="order_category"/>
+            <SummarizeField field="amount" action="Sum" rename="total_amount"/>
+            <SummarizeField field="order_id" action="Count" rename="order_count"/>
+          </SummarizeFields>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Summarize</Name>
+          <AnnotationText>Aggregate orders by customer and category</AnnotationText>
+        </Annotation>
+      </Properties>
+      <InPorts>
+        <InPort Connection="Node_6" Name="Input" Source="Join_1"/>
+      </InPorts>
+      <OutPorts>
+        <OutPort Name="Output" Source="Summarize_1"/>
+      </OutPorts>
+    </Node>
+    <Node ToolID="8">
+      <GuiSettings Plugin="AlteryxBasePluginsGui.DbFileOutput.DbFileOutput">
+        <Position x="950" y="60"/>
+      </GuiSettings>
+      <Properties>
+        <Configuration>
+          <File>C:\Output\customer_order_summary.csv</File>
+          <Passwords/>
+          <FormatSpecificOptions>
+            <LineNumbers value="False"/>
+            <CodePage value="28591"/>
+            <Delimeter>,</Delimeter>
+            <RecordSeparator value="\n"/>
+            <QuotePrefix value="&quot;"/>
+            <QuoteSuffix value="&quot;"/>
+            <Suffixes value="False"/>
+            <IncludeFieldNames value="True"/>
+            <AllowShareWrite value="False"/>
+          </FormatSpecificOptions>
+        </Configuration>
+        <Annotation DisplayMode="0">
+          <Name>Output - Results</Name>
+          <AnnotationText>Write aggregated summary to CSV</AnnotationText>
+        </Annotation>
+      </Properties>
+      <InPorts>
+        <InPort Connection="Node_7" Name="Input" Source="Summarize_1"/>
+      </InPorts>
+      <OutPorts/>
+    </Node>
+  </Nodes>
+  <Connections>
+    <Connection name="Node_1 --&gt; Node_3">
+      <FromNode ToolID="1"/>
+      <ToNode ToolID="3"/>
+      <FromPort Name="Output" ToPort="Input"/>
+    </Connection>
+    <Connection name="Node_3 --&gt; Node_4">
+      <FromNode ToolID="3"/>
+      <ToNode ToolID="4"/>
+      <FromPort Name="Output" ToPort="Input"/>
+    </Connection>
+    <Connection name="Node_4 --&gt; Node_5">
+      <FromNode ToolID="4"/>
+      <ToNode ToolID="5"/>
+      <FromPort Name="True" ToPort="Input"/>
+    </Connection>
+    <Connection name="Node_5 --&gt; Node_6">
+      <FromNode ToolID="5"/>
+      <ToNode ToolID="6"/>
+      <FromPort Name="Output" ToPort="Left"/>
+    </Connection>
+    <Connection name="Node_2 --&gt; Node_6">
+      <FromNode ToolID="2"/>
+      <ToNode ToolID="6"/>
+      <FromPort Name="Output" ToPort="Right"/>
+    </Connection>
+    <Connection name="Node_6 --&gt; Node_7">
+      <FromNode ToolID="6"/>
+      <ToNode ToolID="7"/>
+      <FromPort Name="Join" ToPort="Input"/>
+    </Connection>
+    <Connection name="Node_7 --&gt; Node_8">
+      <FromNode ToolID="7"/>
+      <ToNode ToolID="8"/>
+      <FromPort Name="Output" ToPort="Input"/>
+    </Connection>
+  </Connections>
+  <Properties>
+    <Memory default="True"/>
+    <GlobalRecordLimit value="0"/>
+    <TempFiles default="True"/>
+    <Annotation on="True" includeToolDescription="False"/>
+    <ConvErrorLimit value="10"/>
+    <ConvErrorLimit_Warn value="10"/>
+    <RecordLimit value="0"/>
+  </Properties>
+</AlteryxDocument>
