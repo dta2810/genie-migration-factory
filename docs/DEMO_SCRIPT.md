@@ -19,16 +19,16 @@ Replace `<catalog>`/`<schema>` with your engagement (e.g. `dt_serverless_stable_
 
 ## 0. Set the target to notebooks (config-driven)
 
-Before converting, tell the engagement to emit notebooks (not the default SDP), and where to put
-them (one SHARED folder — notebooks are named `<object>__<NN>_<tool>` so they stay distinct):
+Before converting, configure the engagement: emit notebooks (not the default SDP), a base output
+folder (each object gets its own container subfolder), and the validation mode:
 
 ```
-Set the migration target to notebook_job, and set output_dir to
-/Workspace/Users/<me>/migration-factory
+Set the migration target to notebook_job, output_dir to
+/Workspace/Users/<me>/migration-factory, and validation_data_mode to schema_only
 ```
 
-Genie should `CALL <catalog>.<schema>.set_config('target','notebook_job')` and
-`set_config('output_dir', '...')`. Confirm with:
+Genie should `set_config` for target=notebook_job, output_dir, validation_data_mode=schema_only,
+and output_catalog. Confirm with:
 
 ```
 What's the current migration config?
@@ -57,6 +57,17 @@ shared `output_dir` (named `sample_sales_analytics_complex__<NN>_<tool>`), wires
 **Lakeflow Job** via the ai-dev-kit MCP tools (task per notebook, depends_on = the DAG) — NOT an
 SDP pipeline. It registers each notebook + the job in the `artifacts` table, scores confidence
 deterministically, records TODOs, and transitions to `converted` or `needs_review`.
+
+## 2b. Validate (the gate — should catch structural bugs)
+
+```
+Validate the converted job
+```
+
+Expect: `migrate-validate` runs `schema_only` static analysis (table reads vs writes vs the job
+DAG). If the tasks aren't ordered topologically (e.g. a MultiRowFormula task reading a Sort task's
+output that runs later), it FAILS → object goes to `needs_review` with a blocker TODO naming the
+inversion — instead of silently claiming success. If sound → `validated`.
 
 ## 3. Triage / status
 
