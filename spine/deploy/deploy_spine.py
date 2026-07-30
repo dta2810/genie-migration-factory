@@ -37,6 +37,14 @@ print("DDL files:", files)
 
 # COMMAND ----------
 
+def split_statements(text):
+    # Strip -- line comments first (a comment may contain ';'), then split on ';'.
+    no_comments = "\n".join(
+        ln for ln in text.splitlines() if ln.strip() and not ln.strip().startswith("--")
+    )
+    return [s.strip() for s in no_comments.split(";") if s.strip()]
+
+
 for fname in files:
     with open(os.path.join(ddl_path, fname)) as fh:
         raw = fh.read()
@@ -45,8 +53,7 @@ for fname in files:
         .replace("${schema}", schema)
         .replace("${volume}", volume)
     )
-    # A DDL file may contain multiple statements separated by ';'
-    for stmt in [s.strip() for s in sql_text.split(";") if s.strip() and not s.strip().startswith("--")]:
+    for stmt in split_statements(sql_text):
         print(f"[{fname}] {stmt.splitlines()[0][:80]}...")
         spark.sql(stmt)
 
