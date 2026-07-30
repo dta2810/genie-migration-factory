@@ -19,11 +19,12 @@ Replace `<catalog>`/`<schema>` with your engagement (e.g. `dt_serverless_stable_
 
 ## 0. Set the target to notebooks (config-driven)
 
-Before converting, tell the engagement to emit notebooks (not the default SDP), and where to put them:
+Before converting, tell the engagement to emit notebooks (not the default SDP), and where to put
+them (one SHARED folder — notebooks are named `<object>__<NN>_<tool>` so they stay distinct):
 
 ```
 Set the migration target to notebook_job, and set output_dir to
-/Workspace/Users/<me>/migration-factory/sample_sales_analytics_complex
+/Workspace/Users/<me>/migration-factory
 ```
 
 Genie should `CALL <catalog>.<schema>.set_config('target','notebook_job')` and
@@ -51,10 +52,11 @@ via `CALL` (not raw SQL).
 Convert it — follow the configured target
 ```
 
-Expect: because `target=notebook_job`, Genie writes **notebooks** (bronze/silver/gold) into the
-`output_dir` from config and wires them into a **Lakeflow Job** via the ai-dev-kit MCP tools —
-NOT an SDP pipeline. It scores confidence deterministically, records TODOs, and transitions to
-`converted` or `needs_review`.
+Expect: because `target=notebook_job`, Genie writes **one notebook per Alteryx tool** into the
+shared `output_dir` (named `sample_sales_analytics_complex__<NN>_<tool>`), wires them into a
+**Lakeflow Job** via the ai-dev-kit MCP tools (task per notebook, depends_on = the DAG) — NOT an
+SDP pipeline. It registers each notebook + the job in the `artifacts` table, scores confidence
+deterministically, records TODOs, and transitions to `converted` or `needs_review`.
 
 ## 3. Triage / status
 
@@ -90,3 +92,7 @@ Advance the migration status to deployed
 - **Notebooks, not SDP** — output honors `target=notebook_job` from config (finding P2/P3).
 - **Audit trail complete** — every transition has an audit row:
   `SELECT action, from_status, to_status, actor FROM <catalog>.<schema>.audit ORDER BY event_ts`
+- **Artifacts traced** — every notebook + the job registered:
+  `SELECT artifact_type, source_tool, path, external_id FROM <catalog>.<schema>.artifacts
+   WHERE object_id='alteryx:sample_sales_analytics_complex' ORDER BY created_at`
+  (expect ~15 notebook rows — one per tool — plus one `job` row with the job_id.)

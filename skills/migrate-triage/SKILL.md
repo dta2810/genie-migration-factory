@@ -36,6 +36,13 @@ querying the registry. **Read-only** — it does not convert or change state.
 - Group by `category` (stored_proc, incremental_merge, untranslated_fn, anti_pattern,
   manual_review) so the user sees the systemic gaps, not just per-object noise.
 
+### 3b. Artifacts produced (traceability)
+- For a converted/deployed object, show what it produced:
+  `SELECT artifact_type, source_tool, path, external_id FROM <catalog>.<schema>.artifacts
+   WHERE object_id = '<id>' ORDER BY created_at`
+- This is the object → notebooks/job/pipeline trace: which notebooks were generated (one per
+  Alteryx tool), and the `job`/`pipeline` external_id they were wired into.
+
 ### 4. Recommend next actions
 - Point at the low-complexity `assessed` objects to convert next (quick wins).
 - Point at the `needs_review` objects with only warning-level TODOs (fast to clear).

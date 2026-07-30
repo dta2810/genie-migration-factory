@@ -61,17 +61,32 @@ Target-specific guides — open the ONE matching the configured `target`:
 - Assign medallion layer per the object's `layer` / the layer decision tree.
 - Emit for the configured target:
   - `sdp` — Lakeflow Spark Declarative Pipeline (`@dp` Python or LDP SQL).
-  - `notebook_job` — notebooks + a Lakeflow Job wiring the tasks; use the **ai-dev-kit MCP tools**
-    (`manage_jobs`, `create_pipeline`) to create the job rather than hand-writing job JSON.
-    **Write the notebooks into the `output_dir` from config** (e.g. one per medallion layer:
-    `<output_dir>/bronze_ingest`, `/silver_transform`, `/gold_aggregate`); the job's
-    `notebook_task.notebook_path` points there. See `references/target-notebook-job.md`.
-  - `dbsql` — Databricks SQL files + a SQL Warehouse job (files under `output_dir`).
+  - `notebook_job` — **one notebook per Alteryx tool/node**, plus a Lakeflow Job wiring them in
+    the DAG order. Conventions (do not improvise):
+    - **Folder:** a single shared `output_dir` (from config) — no per-object subfolders.
+    - **Naming:** `<object_id_slug>__<NN>_<tool>` where NN is the ToolID and tool is the plugin
+      short name, e.g. `sample_sales_analytics_complex__04_Filter`, `__11_MultiRowFormula`.
+      (object_id_slug = object_id with ':' → '_'.) This keeps every object's notebooks distinct
+      in the shared folder.
+    - **Job:** create it via the **ai-dev-kit MCP tools** (`manage_jobs`), one task per notebook,
+      `task_key` = the notebook name, `depends_on` matching the Alteryx connections (the DAG).
+    - **Traceability (MANDATORY):** after writing each notebook, `CALL add_artifact(object_id,
+      'notebook', '<NN>_<tool>', '<path>', NULL, '<json>')`; after creating the job,
+      `CALL add_artifact(object_id, 'job', NULL, NULL, '<job_id>', '<json>')`.
+    - See `references/target-notebook-job.md`.
+  - `dbsql` — one `.sql` file per output table in `output_dir` + a SQL Warehouse job; register each
+    file and the job with `add_artifact` too.
 - Where a construct has no clean equivalent (macros, R/Python tool, dynamic input, untranslated
   function), leave a clear `-- TODO:` marker in the output describing what needs manual work.
 
-### 3. Write the output to the Volume
-- Write generated code to `output/<object_id>.<ext>` in the Volume.
+### 3. Write the output + register artifacts
+- For `notebook_job`: write each notebook to the shared `output_dir` using the naming convention
+  above; create the Lakeflow Job via ai-dev-kit MCP `manage_jobs`.
+- For `dbsql`: write `.sql` files to `output_dir`; create the SQL Warehouse job.
+- For `sdp`: write the pipeline file; create/point the SDP pipeline.
+- **Register every artifact** so the object is traceable to what it produced:
+  `CALL <catalog>.<schema>.add_artifact('<object_id>', 'notebook'|'sql_file'|'job'|'pipeline',
+  '<source_tool or NULL>', '<path or NULL>', '<job_id/pipeline_id or NULL>', '<json detail>');`
 
 ### 4. Score deterministically (NOT self-reported)
 - Run `confidence.score(converted_code)` from `spine/lib/confidence.py`.

@@ -21,7 +21,21 @@
 
 ---
 
-## Architecture: Medallion Notebooks + Job
+## Conventions (authoritative — set by the skill, do not improvise)
+
+- **Granularity: one notebook per Alteryx tool/node.** Each `<Node ToolID="NN">` becomes its own
+  notebook. This maximizes traceability (one notebook ↔ one artifacts row ↔ one job task) and
+  handles branching DAGs faithfully. The medallion three-stage pattern shown below is the *simple*
+  case (linear flows); for real/branching workflows, decompose per tool.
+- **Folder: one shared `output_dir`** (from config `output_dir`). No per-object subfolders.
+- **Naming: `<object_slug>__<NN>_<Tool>`** — object_slug = object_id with `:`→`_`, NN = ToolID,
+  Tool = plugin short name. E.g. `sample_sales_analytics_complex__11_MultiRowFormula`. This keeps
+  every object's notebooks distinct within the shared folder.
+- **Job: one task per notebook**, `task_key` = notebook name, `depends_on` = the Alteryx
+  connections (the DAG). Create via ai-dev-kit MCP `manage_jobs`.
+- **Traceability: register every notebook and the job** with `add_artifact` (see the skill).
+
+## Architecture: Medallion Notebooks + Job (simple/linear case)
 
 ### Three-Stage Pipeline Pattern
 

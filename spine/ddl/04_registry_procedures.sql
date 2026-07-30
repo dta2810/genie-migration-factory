@@ -157,6 +157,25 @@ AS BEGIN
   UPDATE ${catalog}.${schema}.todos SET resolved = TRUE WHERE todo_id = p_todo_id;
 END;
 
+-- add_artifact: register a generated artifact (notebook/sql_file/job/pipeline) for an object,
+-- giving traceability from the migration object to every asset it produced. Call once per
+-- notebook/SQL file, and once for the created job/pipeline (with its external_id).
+CREATE OR REPLACE PROCEDURE ${catalog}.${schema}.add_artifact(
+  p_object_id     STRING,
+  p_artifact_type STRING,
+  p_source_tool   STRING,
+  p_path          STRING,
+  p_external_id   STRING,
+  p_detail        STRING
+)
+LANGUAGE SQL
+SQL SECURITY INVOKER
+AS BEGIN
+  INSERT INTO ${catalog}.${schema}.artifacts SELECT
+    uuid(), p_object_id, p_artifact_type, p_source_tool, p_path, p_external_id,
+    p_detail, current_timestamp();
+END;
+
 -- set_config: upsert an engagement config key.
 CREATE OR REPLACE PROCEDURE ${catalog}.${schema}.set_config(p_key STRING, p_value STRING)
 LANGUAGE SQL

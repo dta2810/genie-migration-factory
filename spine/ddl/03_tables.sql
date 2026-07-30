@@ -63,6 +63,21 @@ CREATE TABLE IF NOT EXISTS ${catalog}.${schema}.todos (
 )
 COMMENT 'Ranked unresolved conversion items for triage';
 
+-- Artifacts produced by a conversion: one row per generated notebook / SQL file / job / pipeline.
+-- Gives full traceability from a migration object to every asset it produced.
+CREATE TABLE IF NOT EXISTS ${catalog}.${schema}.artifacts (
+  artifact_id   STRING    NOT NULL,
+  object_id     STRING    NOT NULL COMMENT 'the migration object this artifact belongs to',
+  artifact_type STRING             COMMENT 'notebook | sql_file | job | pipeline',
+  source_tool   STRING             COMMENT 'the Alteryx tool/node this artifact was generated from (for notebook-per-tool)',
+  path          STRING             COMMENT 'workspace path (notebook/sql) — NULL for job/pipeline',
+  external_id   STRING             COMMENT 'job_id or pipeline_id — NULL for files',
+  detail        STRING             COMMENT 'JSON: task_key, depends_on, layer, notes',
+  created_at    TIMESTAMP NOT NULL,
+  CONSTRAINT pk_artifacts PRIMARY KEY (artifact_id)
+)
+COMMENT 'Generated artifacts (notebooks, SQL files, jobs, pipelines) per migration object';
+
 -- Engagement configuration (one row per client): target catalogs, thresholds, prompt overrides.
 CREATE TABLE IF NOT EXISTS ${catalog}.${schema}.config (
   config_key    STRING NOT NULL,

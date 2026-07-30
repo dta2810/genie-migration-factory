@@ -79,8 +79,9 @@ CALL <catalog>.<schema>.set_config('target', 'sdp');            -- sdp | noteboo
 CALL <catalog>.<schema>.set_config('confidence_threshold', '0.8');  -- convert->needs_review cutoff
 CALL <catalog>.<schema>.set_config('target_catalog', '<catalog>');
 CALL <catalog>.<schema>.set_config('target_schema', '<schema>');
--- where generated notebooks/SQL land (workspace path). Default per-object under a migration folder.
-CALL <catalog>.<schema>.set_config('output_dir', '/Workspace/Users/<me>/migration-factory/<object_id>');
+-- shared workspace folder where all generated notebooks/SQL land (NOT per-object; notebooks are
+-- named <object_slug>__<NN>_<tool> so they stay distinct in the shared folder).
+CALL <catalog>.<schema>.set_config('output_dir', '/Workspace/Users/<me>/migration-factory');
 ```
 - **Pick `target` from what the user asked.** "Lakeflow job" / "notebooks" → `notebook_job`;
   "Databricks SQL" / "SQL warehouse" → `dbsql`; "SDP" / "declarative pipeline" / unspecified → `sdp`.
